@@ -1,17 +1,32 @@
 import { useEffect, useState } from "react";
-import { AGENT_LABELS, AGENT_KINDS, type Agent, type AgentKind, type Card, type McpInfo } from "../../shared/board";
-import { ConnectHelp } from "./ConnectHelp";
+import { AGENT_LABELS, AGENT_KINDS, type Agent, type AgentKind, type Card, type ScannedAgent } from "../../shared/board";
+import { ConnectPanel } from "./ConnectPanel";
 
 interface Props {
 	agents: Agent[];
 	cards: Card[];
-	mcp: McpInfo | null;
+	scanned: ScannedAgent[];
+	scanning: boolean;
 	onClose: () => void;
 	onAdd: (input: { name: string; kind: AgentKind; capabilities?: string[] }) => void;
 	onRemove: (id: string) => void;
+	onRescan: () => void;
+	onConnect: (kind: string) => void;
+	onDisconnect: (kind: string) => void;
 }
 
-export function AgentsPanel({ agents, cards, mcp, onClose, onAdd, onRemove }: Props) {
+export function AgentsPanel({
+	agents,
+	cards,
+	scanned,
+	scanning,
+	onClose,
+	onAdd,
+	onRemove,
+	onRescan,
+	onConnect,
+	onDisconnect,
+}: Props) {
 	const [name, setName] = useState("");
 	const [tags, setTags] = useState("");
 
@@ -33,15 +48,15 @@ export function AgentsPanel({ agents, cards, mcp, onClose, onAdd, onRemove }: Pr
 	};
 
 	return (
-		<aside className="drawer" aria-label="agent ที่ต่ออยู่">
-			<header className="drawer-head">
+		<aside className="panel" aria-label="agent ที่ต่ออยู่">
+			<header className="panel-head">
 				<h2>agent</h2>
-				<button type="button" className="ghost" onClick={onClose}>
+				<button type="button" className="ghost small" onClick={onClose}>
 					ปิด
 				</button>
 			</header>
 			<ul className="agents">
-				{agents.length === 0 && <li className="hint">ยังไม่มี agent ต่อเข้ามา</li>}
+				{agents.length === 0 && <li className="hint small">ยังไม่มี agent ในบอร์ดนี้</li>}
 				{agents.map((agent) => {
 					const card = cards.find((item) => item.id === agent.cardId);
 					return (
@@ -50,7 +65,8 @@ export function AgentsPanel({ agents, cards, mcp, onClose, onAdd, onRemove }: Pr
 							<div className="agent-main">
 								<strong>{agent.name}</strong>
 								<span className="hint small">
-									{AGENT_LABELS[agent.kind]} · {agent.state === "working" ? `กำลังทำ: ${card?.title ?? agent.cardId}` : agent.state === "idle" ? "ว่าง" : "ออฟไลน์"}
+									{AGENT_LABELS[agent.kind]} ·{" "}
+									{agent.state === "working" ? `กำลังทำ: ${card?.title ?? agent.cardId}` : agent.state === "idle" ? "ว่าง" : "ออฟไลน์"}
 								</span>
 								{agent.capabilities.length > 0 && (
 									<ul className="chips">
@@ -71,11 +87,11 @@ export function AgentsPanel({ agents, cards, mcp, onClose, onAdd, onRemove }: Pr
 			</ul>
 			<div className="join">
 				<label>
-					ชื่อ agent
+					ชื่อ agent ในบอร์ด
 					<input value={name} placeholder="เช่น codex-1" onChange={(event) => setName(event.target.value)} />
 				</label>
 				<label>
-					ถนัดอะไร
+					ถนัดอะไร (คั่นด้วย ,)
 					<input value={tags} placeholder="backend" onChange={(event) => setTags(event.target.value)} />
 				</label>
 			</div>
@@ -86,7 +102,13 @@ export function AgentsPanel({ agents, cards, mcp, onClose, onAdd, onRemove }: Pr
 					</button>
 				))}
 			</div>
-			<ConnectHelp mcp={mcp} />
+			<ConnectPanel
+				scanned={scanned}
+				scanning={scanning}
+				onRescan={onRescan}
+				onConnect={onConnect}
+				onDisconnect={onDisconnect}
+			/>
 		</aside>
 	);
 }

@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline";
+import { refreshConnections } from "./agent-config";
 import { BoardApp } from "./app";
+import { loadBinding, saveBinding } from "./binding";
 import { BoardService } from "./board";
 import { startMcpServer, type McpServer } from "./mcp";
 import { BoardStore } from "./store";
@@ -18,7 +20,15 @@ const supervisor = new Supervisor({
 });
 let mcp: McpServer | null = null;
 board = new BoardService({ store, runner: supervisor, mcp: () => mcp?.info ?? null });
-if (process.env.AGENTS_KANBAN_NO_MCP !== "1") mcp = await startMcpServer({ board: () => board });
+if (process.env.AGENTS_KANBAN_NO_MCP !== "1") {
+	const binding = loadBinding(directory);
+	mcp = await startMcpServer({ board: () => board }, { port: binding?.port, token: binding?.token });
+	const port = Number(new URL(mcp.info.url).port);
+	saveBinding(directory, { port, token: mcp.info.token });
+	if (process.env.AGENTS_KANBAN_NO_AGENT_CONFIG !== "1") {
+		refreshConnections({ home: process.env.HOME ?? "", url: mcp.info.url, token: mcp.info.token });
+	}
+}
 
 supervisor.sweep();
 
@@ -28,16 +38,15 @@ const shutdown = (): void => {
 	mcp?.stop();
 };
 
-process.on("SIGTERM", () => {
+const close = async (): Promise<void> => {
 	shutdown();
+	await Bun.sleep(250);
 	store.close();
 	process.exit(0);
-});
-process.on("SIGINT", () => {
-	shutdown();
-	store.close();
-	process.exit(0);
-});
+};
+
+process.on("SIGTERM", () => void close());
+process.on("SIGINT", () => void close());
 process.on("exit", shutdown);
 
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });

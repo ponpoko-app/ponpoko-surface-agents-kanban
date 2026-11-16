@@ -26,8 +26,12 @@
     "card.stop",
     "card.answer",
     "card.resume",
+    "agent.scan",
+    "agent.connect",
+    "agent.disconnect",
     "agent.add",
     "agent.remove",
-    "mcp.info"
+    "mcp.info",
+    "agent.refresh"
   ]
 }

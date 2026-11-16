@@ -1,0 +1,153 @@
+.card {
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	border-left: 3px solid var(--line);
+	padding: 10px 11px;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	cursor: grab;
+	box-shadow: 0 1px 1px rgba(30, 26, 20, 0.04);
+	transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.card:hover {
+	border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+	box-shadow: var(--shadow);
+	transform: translateY(-1px);
+}
+
+.card:active {
+	cursor: grabbing;
+}
+
+.card.lane-working {
+	border-left-color: var(--warn);
+}
+
+.card.lane-blocked {
+	border-left-color: var(--danger);
+}
+
+.card.lane-ready_to_test {
+	border-left-color: var(--info);
+}
+
+.card.lane-fix {
+	border-left-color: #a8482f;
+}
+
+.card.lane-done {
+	border-left-color: var(--accent);
+	opacity: 0.88;
+}
+
+.card-head {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	justify-content: space-between;
+}
+
+.card-head h3 {
+	font-size: 13.5px;
+	line-height: 1.4;
+	font-weight: 600;
+}
+
+.card-deliverable,
+.card-question,
+.card-note {
+	font-size: 12px;
+	color: var(--muted);
+	display: -webkit-box;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.card-question {
+	color: var(--fg);
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	border-radius: 8px;
+	padding: 6px 8px;
+	-webkit-line-clamp: 3;
+}
+
+.card-note {
+	-webkit-line-clamp: 2;
+}
+
+.card-foot {
+	display: flex;
+	gap: 10px;
+	font-size: 11px;
+	color: var(--muted);
+	flex-wrap: wrap;
+}
+
+.card-actions {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-end;
+	min-height: 0;
+}
+
+.badge {
+	font-size: 10px;
+	padding: 1px 7px;
+	border-radius: 999px;
+	color: #fff;
+	white-space: nowrap;
+	letter-spacing: 0.04em;
+}
+
+.badge.pass {
+	background: var(--accent);
+}
+
+.badge.fail {
+	background: var(--danger);
+}
+
+.chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.chip {
+	font-size: 11px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 0 8px;
+	color: var(--muted);
+}
+
+.dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--muted);
+	flex: 0 0 auto;
+	margin-top: 6px;
+}
+
+.dot.idle,
+.dot.on {
+	background: var(--accent);
+}
+
+.dot.working,
+.dot.ready {
+	background: var(--warn);
+}
+
+.dot.offline,
+.dot.muted {
+	background: var(--line);
+}

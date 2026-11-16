@@ -12,18 +12,20 @@ ponpoko surface-install --bundle dist
 
 จากนั้นเปิด Ponpoko → เมนู surface → **Agents Kanban**
 
-## ใช้ครั้งแรก
+## ใช้ครั้งแรก — ไม่มีการคัดลอกคำสั่ง
 
-1. เปิด surface แล้ววาง **repo path** ที่แถบด้านบน (โฟลเดอร์ที่ agent จะทำงาน)
-2. เพิ่ม agent อย่างน้อยสองตัว — ตัวหนึ่งทำ ตัวหนึ่งตรวจ — หรือกดปุ่มคำสั่งที่หน้าแรกเพื่อคัดลอกคำสั่งไปต่อใน terminal:
-   ```sh
-   export KANBAN_TOKEN=...
-   codex mcp add agents-kanban --url http://127.0.0.1:<port>/mcp --bearer-token-env-var KANBAN_TOKEN
-   pi mcp add agents-kanban --url http://127.0.0.1:<port>/mcp --bearer-token-env-var KANBAN_TOKEN
-   ```
-3. พิมพ์ชื่อการ์ดในช่อง **+ การ์ดใหม่** ที่คอลัมน์ Backlog แล้วกด Enter — เพิ่ม deliverable/เกณฑ์ผ่านได้ในหน้าการ์ด
+1. วาง **repo path** ที่แถบด้านบน (โฟลเดอร์ที่ agent จะทำงาน)
+2. หน้าการ์ดแรกจะ**สแกนหา agent ที่ติดตั้งในเครื่อง** (codex, pi, claude, opencode, qwen) แล้วโชว์ปุ่ม **เชื่อมต่อ**
+   กดปุ่มเดียวจบ — surface เขียน config ให้เอง (สำรองไฟล์เดิมไว้เป็น `.bak-…`):
+   - `~/.codex/config.toml` → `[mcp_servers.agents-kanban]`
+   - `~/.pi/agent/mcp.json` → `mcpServers.agents-kanban`
+   ไม่ต้อง paste คำสั่ง ไม่ต้อง export token — token และ port ถูกเก็บไว้ใน data dir ของ surface
+3. เพิ่ม agent ในบอร์ด (ชั้นทำงาน/ชั้นตรวจ) แล้วกด **+ การ์ด** หรือพิมพ์ `n`
 
-token เปลี่ยนทุกครั้งที่เปิด Ponpoko ใหม่ เพราะ MCP server อยู่ใน backend ของ surface นี้ และตายพร้อมแอป (ตั้งใจ — ไม่มี process ค้างหลังปิด Ponpoko)
+หลังปิดแล้วเปิด Ponpoko ใหม่ port/token เดิมถูกใช้ซ้ำ และ config ที่ชี้มาที่บอร์ดถูกเขียนซ้ำให้อัตโนมัติ
+ถ้า port เดิมถูกใช้อยู่ บอร์ดจะเลือก port ใหม่แล้วอัปเดต config ให้เอง
+
+Claude Code / opencode / Qwen ถูกตรวจพบแต่ยังเขียน config ให้อัตโนมัติไม่ได้ — หน้ารายการจะบอก url ให้ต่อเอง
 
 ## คอลัมน์
 

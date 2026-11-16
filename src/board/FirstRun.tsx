@@ -1,59 +1,70 @@
 import { useState } from "react";
-import { AGENT_LABELS, type AgentKind, type McpInfo } from "../../shared/board";
-import { ConnectHelp } from "./ConnectHelp";
+import type { ScannedAgent, Settings } from "../../shared/board";
+import { ConnectPanel } from "./ConnectPanel";
 
 interface Props {
-	mcp: McpInfo | null;
-	onAddAgent: (input: { name: string; kind: AgentKind; capabilities?: string[] }) => void;
+	scanned: ScannedAgent[];
+	scanning: boolean;
+	settings: Settings;
+	onRescan: () => void;
+	onConnect: (kind: string) => void;
+	onDisconnect: (kind: string) => void;
+	onSaveSettings: (patch: Partial<Settings>) => void;
 }
 
-const KINDS: AgentKind[] = ["codex", "pi", "manual"];
-
-export function FirstRun({ mcp, onAddAgent }: Props) {
-	const [name, setName] = useState("");
-	const [tags, setTags] = useState("");
-
-	const add = (kind: AgentKind): void => {
-		const typed = name.trim() || (kind === "manual" ? "ฉัน" : kind);
-		onAddAgent({
-			name: typed,
-			kind,
-			capabilities: tags
-				.split(",")
-				.map((tag) => tag.trim())
-				.filter(Boolean),
-		});
-		setName("");
-	};
+export function FirstRun({ scanned, scanning, settings, onRescan, onConnect, onDisconnect, onSaveSettings }: Props) {
+	const [repo, setRepo] = useState(settings.repoPath);
+	const ready = scanned.some((agent) => agent.connected) && repo.trim().length > 0;
 
 	return (
 		<section className="first-run">
-			<h2>บอร์ดนี้ให้ agent ดึงงานไปทำเอง</h2>
-			<p>
-				สร้างการ์ดไว้ใน Backlog — agent ที่ต่อเข้ามาจะดึงไปทำ พอเสร็จส่งให้ agent อีกตัวตรวจ แล้วปิดงานที่ Done ถ้าติดคำถาม
-				การ์ดจะไปค้างที่ Blocked รอคำตอบจากคุณ
-			</p>
-			<ConnectHelp mcp={mcp} />
-			<div className="join">
-				<label>
-					ชื่อ agent
-					<input value={name} placeholder="เช่น codex-1" onChange={(event) => setName(event.target.value)} />
-				</label>
-				<label>
-					ถนัดอะไร (คั่นด้วย ,)
-					<input value={tags} placeholder="backend, frontend" onChange={(event) => setTags(event.target.value)} />
-				</label>
+			<div className="hero">
+				<h2>บอร์ดที่ agent ดึงงานไปทำเอง</h2>
+				<p>
+					การ์ดอยู่ใน Backlog → agent ที่เชื่อมไว้ดึงไปทำในโฟลเดอร์ที่คุณตั้ง → พอเสร็จส่งให้ agent อีกตัวตรวจ →
+					ผ่านก็ปิดงาน ไม่ผ่านก็กลับไปแก้ที่คนเดิม ถ้าติดคำถาม การ์ดจะหยุดที่ Blocked รอคุณตอบ
+				</p>
 			</div>
-			<div className="join-actions">
-				{KINDS.map((kind) => (
-					<button key={kind} type="button" className="primary" onClick={() => add(kind)}>
-						เพิ่ม {AGENT_LABELS[kind]}
-					</button>
-				))}
+			<div className="steps">
+				<div className={`step ${repo.trim() ? "done" : ""}`}>
+					<span className="step-no">1</span>
+					<div className="step-body">
+						<strong>เลือกโฟลเดอร์ที่ agent จะทำงาน</strong>
+						<input
+							value={repo}
+							placeholder="/Users/you/project"
+							onChange={(event) => setRepo(event.target.value)}
+							onBlur={() => onSaveSettings({ repoPath: repo.trim() })}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") onSaveSettings({ repoPath: repo.trim() });
+							}}
+						/>
+					</div>
+				</div>
+				<div className={`step ${ready ? "done" : ""}`}>
+					<span className="step-no">2</span>
+					<div className="step-body">
+						<strong>เชื่อม agent ที่ติดตั้งอยู่แล้ว</strong>
+						<ConnectPanel
+							scanned={scanned}
+							scanning={scanning}
+							onRescan={onRescan}
+							onConnect={onConnect}
+							onDisconnect={onDisconnect}
+						/>
+					</div>
+				</div>
+				<div className="step">
+					<span className="step-no">3</span>
+					<div className="step-body">
+						<strong>สร้างการ์ดใบแรก</strong>
+						<p className="hint small">
+							พิมพ์ชื่อการ์ดในช่อง “+ การ์ดใหม่” ที่คอลัมน์ Backlog ด้านล่าง — ใส่ deliverable ให้ปิดจบได้จริง
+							เช่น “tag v0.2 แล้ว publish”
+						</p>
+					</div>
+				</div>
 			</div>
-			<p className="hint small">
-				agent ที่เพิ่มเองจะได้ session จริงต่อเมื่อตั้ง repo path ที่แถบด้านบน — ชนิด manual คือคุณลากการ์ดเอง ไม่มี session
-			</p>
 		</section>
 	);
 }

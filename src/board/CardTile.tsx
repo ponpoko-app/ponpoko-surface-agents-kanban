@@ -9,6 +9,7 @@ interface Props {
 	onAnswer: (id: string) => void;
 	onDragStart: (payload: DragPayload) => void;
 	onDragEnd: () => void;
+	onDragOver: () => void;
 }
 
 const nameOf = (agents: Agent[], id: string | null): string =>
@@ -22,7 +23,7 @@ const latest = (card: Card): string => {
 	return card.notes[card.notes.length - 1]?.text ?? "";
 };
 
-export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart, onDragEnd }: Props) {
+export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart, onDragEnd, onDragOver }: Props) {
 	const worker = nameOf(agents, card.assignee);
 	const reviewer = nameOf(agents, card.reviewer);
 	return (
@@ -35,6 +36,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 				onDragStart({ id: card.id, lane: card.lane });
 			}}
 			onDragEnd={onDragEnd}
+			onDragOver={onDragOver}
 			onClick={() => onOpen(card.id)}
 			onKeyDown={(event) => {
 				if (event.key === "Enter" || event.key === " ") {

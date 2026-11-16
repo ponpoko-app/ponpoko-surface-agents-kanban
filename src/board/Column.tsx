@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LANE_HINTS, LANE_LABELS, type Agent, type Card, type Lane } from "../../shared/board";
 import { CardTile } from "./CardTile";
-import { acceptsDrop, decodeDrag, DRAG_MIME, dropTone, type DragPayload } from "./dnd";
+import { acceptsDrop, dropTone, type DragPayload } from "./dnd";
 
 interface Props {
 	lane: Lane;
@@ -31,9 +31,11 @@ export function Column({
 	onCreate,
 }: Props) {
 	const [hover, setHover] = useState(false);
+	const [dropAt, setDropAt] = useState<number | null>(null);
 	const [draft, setDraft] = useState("");
 	const [composing, setComposing] = useState(false);
 	const tone = hover && dragging ? dropTone(dragging.lane, lane) : "idle";
+	const legal = dragging ? acceptsDrop(dragging.lane, lane) : false;
 
 	const submit = (): void => {
 		const title = draft.trim();
@@ -42,26 +44,33 @@ export function Column({
 		setDraft("");
 	};
 
+	const drop = (): void => {
+		setHover(false);
+		setDropAt(null);
+		if (!dragging || !legal) return;
+		onDropCard(dragging.id, lane);
+	};
+
 	return (
 		<section
-			className={`column tone-${tone}`}
+			className={`column tone-${tone}${legal ? " legal" : ""}`}
 			onDragOver={(event) => {
-				if (!dragging || !acceptsDrop(dragging.lane, lane)) {
-					event.dataTransfer.dropEffect = dragging ? "none" : "move";
+				if (!dragging) return;
+				if (!legal) {
+					event.dataTransfer.dropEffect = "none";
 					return;
 				}
 				event.preventDefault();
 				event.dataTransfer.dropEffect = "move";
 				setHover(true);
 			}}
-			onDragLeave={() => setHover(false)}
+			onDragLeave={() => {
+				setHover(false);
+				setDropAt(null);
+			}}
 			onDrop={(event) => {
 				event.preventDefault();
-				setHover(false);
-				const payload = decodeDrag(event.dataTransfer.getData(DRAG_MIME)) ?? dragging;
-				if (!payload) return;
-				if (!acceptsDrop(payload.lane, lane)) return;
-				onDropCard(payload.id, lane);
+				drop();
 			}}
 			aria-label={`คอลัมน์ ${LANE_LABELS[lane]}`}
 		>
@@ -69,6 +78,7 @@ export function Column({
 				<h2>{LANE_LABELS[lane]}</h2>
 				<span className="count">{cards.length}</span>
 			</header>
+
 			{lane === "backlog" && (
 				<div className="composer">
 					{composing ? (
@@ -101,20 +111,44 @@ export function Column({
 					)}
 				</div>
 			)}
+
 			<div className="column-body">
 				{cards.length === 0 && <p className="empty">{LANE_HINTS[lane]}</p>}
-				{cards.map((card) => (
-					<CardTile
-						key={card.id}
-						card={card}
-						agents={agents}
-						onOpen={onOpen}
-						onStart={onStart}
-						onAnswer={onAnswer}
-						onDragStart={onDragStart}
-						onDragEnd={onDragEnd}
-					/>
+				{cards.map((card, index) => (
+					<div key={card.id} className="slot">
+						{dropAt === index && legal && <span className="drop-line" aria-hidden="true" />}
+						<CardTile
+							card={card}
+							agents={agents}
+							onOpen={onOpen}
+							onStart={onStart}
+							onAnswer={onAnswer}
+							onDragStart={onDragStart}
+							onDragEnd={() => {
+								onDragEnd();
+								setDropAt(null);
+							}}
+							onDragOver={() => {
+								if (legal) setDropAt(index);
+							}}
+						/>
+					</div>
 				))}
+				{cards.length > 0 && dropAt === cards.length && legal && <span className="drop-line" aria-hidden="true" />}
+				{cards.length > 0 && (
+					<div
+						className="column-tail"
+						onDragOver={(event) => {
+							if (!legal) return;
+							event.preventDefault();
+							setDropAt(cards.length);
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							drop();
+						}}
+					/>
+				)}
 			</div>
 		</section>
 	);

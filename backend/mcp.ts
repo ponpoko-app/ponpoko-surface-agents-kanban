@@ -93,8 +93,8 @@ const cardView = (card: ReturnType<BoardService["card"]>) => ({
 	notes: card.notes.slice(-5).map((note) => note.text),
 });
 
-export async function startMcpServer(deps: McpDeps): Promise<McpServer> {
-	const token = randomToken(24);
+export async function startMcpServer(deps: McpDeps, options: { port?: number; token?: string } = {}): Promise<McpServer> {
+	const token = options.token ?? randomToken(24);
 	const session = randomToken(8);
 
 	const runTool = (name: string, args: Args): unknown => {
@@ -177,10 +177,7 @@ export async function startMcpServer(deps: McpDeps): Promise<McpServer> {
 		return failure(request.id, -32601, `ไม่รู้จัก method ${method}`);
 	};
 
-	const server = Bun.serve({
-		hostname: "127.0.0.1",
-		port: 0,
-		async fetch(request) {
+	const fetchHandler = async (request: Request): Promise<Response> => {
 			const url = new URL(request.url);
 			if (url.pathname !== "/mcp") return new Response("not found", { status: 404 });
 			if (request.method === "GET") return new Response("use POST", { status: 405 });
@@ -199,11 +196,20 @@ export async function startMcpServer(deps: McpDeps): Promise<McpServer> {
 				const payload = await Promise.all(answered.map((response) => response.json()));
 				return Response.json(payload, { headers: { "Content-Type": "application/json" } });
 			}
-			const response = handle(body);
-			if (!response) return new Response(null, { status: 202 });
-			return response;
-		},
-	});
+		const response = handle(body);
+		if (!response) return new Response(null, { status: 202 });
+		return response;
+	};
+
+	const bind = (port: number): ReturnType<typeof Bun.serve> =>
+		Bun.serve({ hostname: "127.0.0.1", port, fetch: fetchHandler });
+
+	let server: ReturnType<typeof Bun.serve>;
+	try {
+		server = bind(options.port ?? 0);
+	} catch {
+		server = bind(0);
+	}
 
 	const url = `http://127.0.0.1:${server.port}/mcp`;
 	const info: McpInfo = {

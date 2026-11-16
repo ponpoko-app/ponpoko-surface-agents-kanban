@@ -19,7 +19,7 @@ const check = (name, ok, detail = "") => {
 const directory = await mkdtemp(join(tmpdir(), "kanban-smoke-"));
 const child = Bun.spawn([BINARY], {
   cwd: PROJECT,
-  env: { ...process.env, PONPOKO_SURFACE_DATA_DIR: directory, PONPOKO_SURFACE_ID: "agents-kanban" },
+  env: { ...process.env, PONPOKO_SURFACE_DATA_DIR: directory, PONPOKO_SURFACE_ID: "agents-kanban", AGENTS_KANBAN_NO_AGENT_CONFIG: "1" },
   stdin: "pipe",
   stdout: "pipe",
   stderr: "pipe",
@@ -112,6 +112,13 @@ try {
     "ready_to_test picks a reviewer that is not the implementer",
     ready.reviewer !== null && ready.reviewer !== ready.assignee,
     `${ready.assignee} vs ${ready.reviewer} (${reviewerAgent.id})`,
+  );
+
+  const scan = await rpc("agent.scan");
+  check(
+    "agent.scan lists the coding agents this machine could connect",
+    Array.isArray(scan.agents) && ["codex", "pi", "claude", "opencode", "qwen"].every((kind) => scan.agents.some((agent) => agent.kind === kind)),
+    (scan.agents ?? []).map((agent) => `${agent.kind}:${agent.installed ? "found" : "missing"}`).join(","),
   );
 
   const snapshot = await rpc("board.snapshot");

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Agent, BoardSnapshot, Card, Lane, Settings } from "../../shared/board";
+import type { Agent, BoardSnapshot, Card, Lane, ScannedAgent, Settings } from "../../shared/board";
 import {
 	addAgent as addAgentCall,
 	answerCard,
+	connectAgent as connectAgentCall,
 	createCard,
 	deleteCard,
+	disconnectAgent as disconnectAgentCall,
 	fetchSnapshot,
+	scanAgents as scanAgentsCall,
 	moveCard,
 	removeAgent as removeAgentCall,
 	saveSettings as saveSettingsCall,
@@ -30,6 +33,8 @@ const replaceCard = (snapshot: BoardSnapshot | null, card: Card): BoardSnapshot 
 
 export interface BoardState {
 	snapshot: BoardSnapshot | null;
+	scanned: ScannedAgent[];
+	scanning: boolean;
 	error: string | null;
 	toast: string | null;
 	banner: string | null;
@@ -45,11 +50,16 @@ export interface BoardState {
 	addAgent: (input: AgentInput) => Promise<Agent | null>;
 	removeAgent: (id: string) => Promise<void>;
 	saveSettings: (patch: Partial<Settings>) => Promise<void>;
+	rescan: () => Promise<void>;
+	connect: (kind: string) => Promise<void>;
+	disconnect: (kind: string) => Promise<void>;
 }
 
 export function useBoard(client: BoardClient | null): BoardState {
 	const [snapshot, setSnapshot] = useState<BoardSnapshot | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [scanned, setScanned] = useState<ScannedAgent[]>([]);
+	const [scanning, setScanning] = useState(false);
 	const [toast, setToast] = useState<string | null>(null);
 	const [banner, setBanner] = useState<string | null>(null);
 	const asked = useRef(0);
@@ -184,8 +194,52 @@ export function useBoard(client: BoardClient | null): BoardState {
 		[client],
 	);
 
+	const rescan = useCallback(async () => {
+		if (!client) return;
+		setScanning(true);
+		try {
+			setScanned(await scanAgentsCall(client));
+		} catch (failure) {
+			setToast(`สแกนหา agent ไม่สำเร็จ — ${String(failure)}`);
+		} finally {
+			setScanning(false);
+		}
+	}, [client]);
+
+	const connect = useCallback(
+		async (kind: string) => {
+			if (!client) return;
+			try {
+				setScanned(await connectAgentCall(client, kind));
+				setToast(`เชื่อมต่อ ${kind} แล้ว — เปิด ${kind} ใหม่หนึ่งครั้งให้อ่าน config`);
+			} catch (failure) {
+				setToast(`เชื่อมต่อไม่สำเร็จ — ${String(failure)}`);
+			}
+		},
+		[client],
+	);
+
+	const disconnect = useCallback(
+		async (kind: string) => {
+			if (!client) return;
+			try {
+				setScanned(await disconnectAgentCall(client, kind));
+				setToast(`ยกเลิกการเชื่อมต่อ ${kind} แล้ว`);
+			} catch (failure) {
+				setToast(`ยกเลิกไม่สำเร็จ — ${String(failure)}`);
+			}
+		},
+		[client],
+	);
+
+	useEffect(() => {
+		void rescan();
+	}, [rescan]);
+
 	return {
 		snapshot,
+		scanned,
+		scanning,
 		error,
 		toast,
 		banner,
@@ -201,5 +255,8 @@ export function useBoard(client: BoardClient | null): BoardState {
 		addAgent,
 		removeAgent,
 		saveSettings,
+		rescan,
+		connect,
+		disconnect,
 	};
 }

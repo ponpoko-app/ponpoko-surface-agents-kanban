@@ -78,8 +78,9 @@ beforeAll(() => {
 	live = setup(join(root, "data"));
 });
 
-afterAll(() => {
+afterAll(async () => {
 	live?.supervisor.stopAll();
+	if (live) await waitFor(() => live.supervisor.live().size === 0, 6000);
 	live?.store.close();
 	process.env.PATH = originalPath;
 	delete process.env.KANBAN_TEST_PIDS;

@@ -1,4 +1,5 @@
 import type { Lane } from "../shared/board";
+import { connectAgent, disconnectAgent, refreshConnections, scanAgents, type ConfigDeps } from "./agent-config";
 import type { BoardService } from "./board";
 
 type Params = Record<string, unknown>;
@@ -18,6 +19,11 @@ export class BoardApp {
 
 	constructor(board: BoardService) {
 		this.board = board;
+	}
+
+	private configDeps(): ConfigDeps {
+		const mcp = this.board.snapshot().mcp;
+		return { home: process.env.HOME ?? "", url: mcp?.url ?? "", token: mcp?.token ?? "" };
 	}
 
 	async call(method: string, params: Params = {}): Promise<unknown> {
@@ -49,6 +55,20 @@ export class BoardApp {
 				return this.board.answer(requireId(params), text(params, "answer"));
 			case "card.resume":
 				return this.board.resume(requireId(params));
+			case "agent.scan":
+				return { agents: scanAgents(this.configDeps()) };
+			case "agent.connect": {
+				const written = connectAgent(text(params, "kind"), this.configDeps());
+				return { written, agents: scanAgents(this.configDeps()) };
+			}
+			case "agent.disconnect": {
+				const written = disconnectAgent(text(params, "kind"), this.configDeps());
+				return { written, agents: scanAgents(this.configDeps()) };
+			}
+			case "agent.refresh": {
+				const written = refreshConnections(this.configDeps());
+				return { written, agents: scanAgents(this.configDeps()) };
+			}
 			case "agent.add":
 				return this.board.addAgent(params);
 			case "agent.remove":

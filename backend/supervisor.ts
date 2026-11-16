@@ -221,14 +221,14 @@ export class Supervisor implements Runner {
 	}
 
 	stopAll(): void {
-		const runs = [...this.runs.values()];
-		for (const run of runs) this.signal(run, "SIGTERM");
-		const deadline = Date.now() + this.cutoff;
-		while (this.runs.size > 0 && Date.now() < deadline) {
-			Bun.sleepSync(50);
+		for (const run of this.runs.values()) {
+			this.signal(run, "SIGTERM");
+			const timer = setTimeout(() => {
+				const still = this.runs.get(run.cardId);
+				if (still) this.signal(still, "SIGKILL");
+			}, this.cutoff);
+			timer.unref?.();
 		}
-		for (const run of this.runs.values()) this.signal(run, "SIGKILL");
-		this.runs.clear();
 	}
 
 	sweep(): Card[] {

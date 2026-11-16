@@ -6,6 +6,7 @@ import type { DragPayload } from "./dnd";
 interface Props {
 	cards: Card[];
 	agents: Agent[];
+	searching: boolean;
 	onMove: (id: string, lane: Lane) => void;
 	onCreate: (title: string) => void;
 	onOpen: (id: string) => void;
@@ -13,10 +14,10 @@ interface Props {
 	onAnswer: (id: string) => void;
 }
 
-export function Board({ cards, agents, onMove, onCreate, onOpen, onStart, onAnswer }: Props) {
+export function Board({ cards, agents, searching, onMove, onCreate, onOpen, onStart, onAnswer }: Props) {
 	const [dragging, setDragging] = useState<DragPayload | null>(null);
 	return (
-		<div className="board" onDragEnd={() => setDragging(null)}>
+		<div className={`board${searching ? " searching" : ""}`} onDragEnd={() => setDragging(null)}>
 			{LANES.map((lane) => (
 				<Column
 					key={lane}

@@ -107,6 +107,16 @@ export interface McpInfo {
 	pi: string | null;
 }
 
+export interface ScannedAgent {
+	kind: string;
+	label: string;
+	installed: boolean;
+	supported: boolean;
+	configPath: string;
+	connected: boolean;
+	detail: string;
+}
+
 export interface BoardSnapshot {
 	cards: Card[];
 	agents: Agent[];

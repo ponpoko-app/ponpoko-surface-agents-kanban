@@ -1,5 +1,5 @@
 import { createSurfaceClient } from "../sdk/surface.mjs";
-import type { Agent, AgentKind, BoardSnapshot, Card, Lane, McpInfo, Settings } from "../../shared/board";
+import type { Agent, AgentKind, BoardSnapshot, Card, Lane, McpInfo, ScannedAgent, Settings } from "../../shared/board";
 
 export interface NewCardInput {
 	title: string;
@@ -72,3 +72,12 @@ export const saveSettings = (client: BoardClient, patch: Partial<Settings>): Pro
 	client.backend<Settings>("board.settings", { patch });
 
 export const mcpInfo = (client: BoardClient): Promise<McpInfo | null> => client.backend<McpInfo | null>("mcp.info");
+
+export const scanAgents = (client: BoardClient): Promise<ScannedAgent[]> =>
+	client.backend<{ agents: ScannedAgent[] }>("agent.scan").then((result) => result.agents);
+
+export const connectAgent = (client: BoardClient, kind: string): Promise<ScannedAgent[]> =>
+	client.backend<{ agents: ScannedAgent[] }>("agent.connect", { kind }).then((result) => result.agents);
+
+export const disconnectAgent = (client: BoardClient, kind: string): Promise<ScannedAgent[]> =>
+	client.backend<{ agents: ScannedAgent[] }>("agent.disconnect", { kind }).then((result) => result.agents);
