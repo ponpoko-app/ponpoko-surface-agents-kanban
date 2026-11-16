@@ -2,6 +2,7 @@ import {
 	addNote,
 	canMove,
 	emptyCard,
+	agentFits,
 	laneCards,
 	LANES,
 	pickAssignee,
@@ -344,6 +345,37 @@ export class BoardService {
 			card.assignee === id || card.reviewer === id ? { ...card, assignee: card.assignee === id ? null : card.assignee, reviewer: card.reviewer === id ? null : card.reviewer } : card,
 		);
 		for (const card of cards) this.deps.store.putCard(card);
+	}
+
+	assign(id: string, agentId: string, role: CardRole = "implementer"): Card {
+		const card = this.card(id);
+		const at = stamp();
+		const base: Card =
+			role === "reviewer"
+				? { ...card, reviewer: agentId, updatedAt: at }
+				: { ...card, assignee: agentId, updatedAt: at };
+		const next = addNote(base, { at, kind: "move", text: `มอบหมายให้ ${agentId} ผ่าน MCP` });
+		this.deps.store.putCard(next);
+		this.claim(agentId, id);
+		this.deps.runner.start(next, role);
+		return next;
+	}
+
+	claimNext(agentId: string): Card | null {
+		const agent = this.deps.store.agent(agentId);
+		if (!agent || agent.kind === "manual") return null;
+		if (agent.cardId) return this.deps.store.card(agent.cardId);
+		const candidate = laneCards(this.deps.store.cards(), "backlog").find((card) => agentFits(agent, card.tags));
+		if (!candidate) return null;
+		const at = stamp();
+		const next = addNote(
+			{ ...candidate, lane: "working", assignee: agentId, interrupted: false, updatedAt: at },
+			{ at, kind: "move", text: `${agent.name} ดึงการ์ดจาก Backlog` },
+		);
+		this.deps.store.putCard(next);
+		this.claim(agentId, next.id);
+		this.deps.runner.start(next, "implementer");
+		return next;
 	}
 
 	claim(agentId: string, cardId: string): Agent | null {

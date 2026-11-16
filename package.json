@@ -10,8 +10,8 @@
     "build": "bun run typecheck && bunx vite build && bun scripts/bundle.mjs",
     "test": "bun test test",
     "lint": "bunx oxlint --config oxlint.json",
-    "check:bundle": "node ../ponpoko-surface-sdk/scripts/check-surface.mjs dist",
-    "smoke": "node scripts/smoke.mjs"
+    "check:bundle": "bun scripts/check-bundle.mjs",
+    "smoke": "bun scripts/smoke.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

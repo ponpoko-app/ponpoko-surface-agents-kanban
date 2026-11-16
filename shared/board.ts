@@ -140,7 +140,7 @@ export interface Pick {
 
 const free = (agent: Agent): boolean => agent.state !== "offline" && agent.cardId === null;
 
-const matchTags = (agent: Agent, tags: readonly string[]): boolean => {
+export const agentFits = (agent: Agent, tags: readonly string[]): boolean => {
 	if (tags.length === 0) return true;
 	const held = new Set(agent.capabilities.map((tag) => tag.trim().toLowerCase()));
 	return tags.every((tag) => held.has(tag.trim().toLowerCase()));
@@ -151,7 +151,7 @@ const order = (agents: readonly Agent[]): Agent[] =>
 		(a, b) => a.load - b.load || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
 	);
 
-const reasonFor = (agent: Agent, tags: readonly string[]): string =>
+const reasonFor = (tags: readonly string[]): string =>
 	tags.length === 0
 		? `ว่าง และไม่มีงานค้าง`
 		: `ว่าง และถนัด ${tags.join(", ")}`;
@@ -164,13 +164,13 @@ export const assigneeCandidates = (card: Card, agents: readonly Agent[]): Agent[
 				free(agent) &&
 				agent.id !== card.assignee &&
 				agent.id !== card.reviewer &&
-				matchTags(agent, card.tags),
+				agentFits(agent, card.tags),
 		),
 	);
 
 export const pickAssignee = (card: Card, agents: readonly Agent[]): Pick | null => {
 	const chosen = assigneeCandidates(card, agents)[0];
-	return chosen ? { agentId: chosen.id, reason: reasonFor(chosen, card.tags) } : null;
+	return chosen ? { agentId: chosen.id, reason: reasonFor(card.tags) } : null;
 };
 
 export const pickReviewer = (card: Card, agents: readonly Agent[]): Pick | null => {
