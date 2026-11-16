@@ -174,7 +174,7 @@ export const pickAssignee = (card: Card, agents: readonly Agent[]): Pick | null 
 };
 
 export const pickReviewer = (card: Card, agents: readonly Agent[]): Pick | null => {
-	const excluded = new Set([card.assignee, card.sessions.implementer, card.id].filter(Boolean) as string[]);
+	const excluded = new Set([card.assignee, card.sessions.implementer].filter(Boolean) as string[]);
 	const seen = new Set<Agent>();
 	for (const agent of order(agents)) {
 		if (agent.kind === "manual" || !free(agent)) continue;
@@ -188,8 +188,10 @@ export const pickReviewer = (card: Card, agents: readonly Agent[]): Pick | null 
 
 export const sessionName = (cardId: string, role: CardRole): string => `kanban-${cardId}-${role}`;
 
-const PASS = /^(pass|passed|ok|ผ่าน)\b/i;
-const FAIL = /^(fail|failed|reject|ไม่ผ่าน)\b/i;
+const PASS = /^(pass|passed|ok)\b/i;
+const PASS_TH = /^ผ่าน/;
+const FAIL = /^(fail|failed|reject)\b/i;
+const FAIL_TH = /^ไม่ผ่าน/;
 
 export const readVerdict = (text: string): "pass" | "fail" | null => {
 	const line = text
@@ -198,8 +200,8 @@ export const readVerdict = (text: string): "pass" | "fail" | null => {
 		.find((part) => part.length > 0);
 	if (!line) return null;
 	const clean = line.replace(/^[#*\-\s]+/, "").replace(/[:：].*$/, "").trim();
-	if (PASS.test(clean)) return "pass";
-	if (FAIL.test(clean)) return "fail";
+	if (FAIL.test(clean) || FAIL_TH.test(clean)) return "fail";
+	if (PASS.test(clean) || PASS_TH.test(clean)) return "pass";
 	return null;
 };
 

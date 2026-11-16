@@ -29,10 +29,10 @@ export interface BoardClient {
 	dispose(): void;
 }
 
-const surface = createSurfaceClient();
-
 export async function connect(): Promise<BoardClient> {
+	let surface: ReturnType<typeof createSurfaceClient>;
 	try {
+		surface = createSurfaceClient();
 		await surface.ready();
 	} catch (error) {
 		throw new Error(`ต่อกับ Ponpoko ไม่ได้ — เปิด surface นี้จากในแอป Ponpoko ก่อน (${String(error)})`);

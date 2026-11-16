@@ -219,6 +219,9 @@ export class BoardService {
 				const assignee = card.assignee ?? assignment?.agentId ?? null;
 				let next: Card = { ...card, lane, assignee, interrupted: false, updatedAt: at };
 				if (assignment) next = addNote(next, { at, kind: "move", text: `มอบหมายให้ ${assignment.agentId} — ${assignment.reason}` });
+				if (!assignee) {
+					return addNote(next, { at, kind: "event", text: "ยังไม่มี agent ว่าง งานรออยู่ — ลากการ์ดเองหรือเพิ่ม agent" });
+				}
 				const resumed = this.deps.runner.start(next, "implementer");
 				next = addNote(next, {
 					at,
