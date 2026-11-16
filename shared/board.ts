@@ -65,6 +65,14 @@ export interface CardNote {
 	text: string;
 }
 
+export interface Attachment {
+	id: string;
+	name: string;
+	mime: string;
+	bytes: number;
+	createdAt: number;
+}
+
 export interface Card {
 	id: string;
 	title: string;
@@ -81,6 +89,7 @@ export interface Card {
 	answer: string | null;
 	verdict: string | null;
 	interrupted: boolean;
+	attachments: Attachment[];
 	notes: CardNote[];
 	createdAt: number;
 	updatedAt: number;
@@ -231,6 +240,7 @@ export const emptyCard = (id: string, at: number): Card => ({
 	answer: null,
 	verdict: null,
 	interrupted: false,
+	attachments: [],
 	notes: [],
 	createdAt: at,
 	updatedAt: at,

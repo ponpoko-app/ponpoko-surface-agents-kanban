@@ -193,8 +193,13 @@ export function App({ client }: Props) {
 
 			{openCard && (
 				<CardDrawer
+					client={client}
 					card={openCard}
 					agents={snapshot.agents}
+					onAttachFiles={(id, files) => {
+						for (const file of files) void board.attach(id, file);
+					}}
+					onDetachFile={(id, attachmentId) => void board.detach(id, attachmentId)}
 					onClose={() => setOpenId(null)}
 					onSave={(id, patch) => void board.update(id, patch)}
 					onMove={(id, lane) => void board.move(id, lane)}

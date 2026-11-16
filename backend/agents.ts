@@ -40,7 +40,23 @@ const firstLine = (text: string): string => text.split("\n").map((line) => line.
 
 const clip = (text: string, max = 220): string => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
 
-export const buildMessage = (card: Card, role: CardRole, phase: Phase, extra?: string): string => {
+export interface MediaRef {
+	name: string;
+	path: string;
+}
+
+export interface MessageOptions {
+	extra?: string;
+	images?: MediaRef[];
+}
+
+const imageLines = (images: MediaRef[]): string[] =>
+	images.length === 0
+		? []
+		: ["", "รูปแนบ (เปิดไฟล์เหล่านี้ก่อนลงมือ — มันบอก requirement หรือบั๊กที่ต้องแก้):", ...images.map((image) => `- ${image.path} (${image.name})`)];
+
+export const buildMessage = (card: Card, role: CardRole, phase: Phase, opts: MessageOptions = {}): string => {
+	const extra = opts.extra;
 	const lines = [
 		`การ์ด: ${card.title}`,
 		card.deliverable ? `deliverable ที่ต้องปิดให้จบ: ${card.deliverable}` : "deliverable: ทำให้งานนี้ปิดจบได้จริง",
@@ -69,19 +85,34 @@ export const buildMessage = (card: Card, role: CardRole, phase: Phase, extra?: s
 			"จบงานแล้วเลื่อนการ์ดไป ready to test ด้วย tool board_submit",
 		);
 	}
-	return lines.filter((line, index) => line.length > 0 || index === lines.length - 1).join("\n");
+	const body = lines.filter((line, index) => line.length > 0 || index === lines.length - 1);
+	return [...body, ...imageLines(opts.images ?? [])].join("\n");
 };
 
 export const buildLaunch = (
 	kind: AgentKind,
-	opts: { card: Card; role: CardRole; phase: Phase; message: string; repoPath: string; sessionId: string | null },
+	opts: {
+		card: Card;
+		role: CardRole;
+		phase: Phase;
+		message: string;
+		repoPath: string;
+		sessionId: string | null;
+		images?: MediaRef[];
+	},
 ): Launch => {
+	const images = (opts.images ?? []).slice(0, 4);
 	const env: Record<string, string> = { AGENTS_KANBAN_CARD_ID: opts.card.id, AGENTS_KANBAN_ROLE: opts.role };
 	if (kind === "codex") {
-		const args =
-			opts.phase === "resume"
-				? ["exec", "--json", "--sandbox", "workspace-write", "-C", opts.repoPath, "resume", opts.sessionId ?? "--last", opts.message]
-				: ["exec", "--json", "-s", "workspace-write", "-C", opts.repoPath, opts.message];
+		if (opts.phase === "resume") {
+			const args = ["exec", "--json", "--sandbox", "workspace-write", "-C", opts.repoPath, "resume", opts.sessionId ?? "--last"];
+			for (const image of images) args.push("-i", image.path);
+			args.push(opts.message);
+			return { command: "codex", args, cwd: opts.repoPath, env };
+		}
+		const args = ["exec", "--json", "-s", "workspace-write", "-C", opts.repoPath];
+		for (const image of images) args.push("-i", image.path);
+		args.push(opts.message);
 		return { command: "codex", args, cwd: opts.repoPath, env };
 	}
 	if (kind === "pi") {

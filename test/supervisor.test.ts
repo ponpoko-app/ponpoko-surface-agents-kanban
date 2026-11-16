@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Attachments } from "../backend/attachments";
 import { BoardService } from "../backend/board";
 import { BoardStore } from "../backend/store";
 import { Supervisor } from "../backend/supervisor";
@@ -46,7 +47,7 @@ const setup = (directory: string): Setup => {
 		repoPath: () => store.settings().repoPath,
 		cutoffMs: 2000,
 	});
-	const board = new BoardService({ store, runner: supervisor });
+	const board = new BoardService({ store, runner: supervisor, attachments: new Attachments(directory) });
 	board.settings({ repoPath: repo, maxConcurrent: 2, autoResume: true, autoAssign: true });
 	return { store, board, supervisor };
 };

@@ -3,6 +3,8 @@ import type { Agent, BoardSnapshot, Card, Lane, ScannedAgent, Settings } from ".
 import {
 	addAgent as addAgentCall,
 	answerCard,
+	attachImage,
+	detachImage,
 	connectAgent as connectAgentCall,
 	createCard,
 	deleteCard,
@@ -19,6 +21,7 @@ import {
 	type CardPatch,
 	type NewCardInput,
 } from "./client";
+import { fileToBase64, forget, MAX_BYTES } from "./media";
 
 const POLL_MS = 1200;
 
@@ -45,6 +48,8 @@ export interface BoardState {
 	create: (input: NewCardInput) => Promise<Card | null>;
 	update: (id: string, patch: CardPatch) => Promise<Card | null>;
 	answer: (id: string, text: string) => Promise<Card | null>;
+	attach: (id: string, file: File) => Promise<boolean>;
+	detach: (id: string, attachmentId: string) => Promise<boolean>;
 	start: (id: string) => Promise<Card | null>;
 	remove: (id: string) => Promise<void>;
 	addAgent: (input: AgentInput) => Promise<Agent | null>;
@@ -122,6 +127,42 @@ export function useBoard(client: BoardClient | null): BoardState {
 			return result !== null;
 		},
 		[act, client],
+	);
+
+	const attach = useCallback(
+		async (id: string, file: File) => {
+			if (!client) return false;
+			if (file.size > MAX_BYTES) {
+				setToast(`รูปใหญ่เกิน ${Math.round(MAX_BYTES / 1024 / 1024)}MB — ย่อก่อนแนบ`);
+				return false;
+			}
+			try {
+				const data = await fileToBase64(file);
+				const card = await attachImage(client, id, { name: file.name || "screenshot.png", mime: file.type, data_base64: data });
+				setSnapshot((current) => replaceCard(current, card));
+				return true;
+			} catch (failure) {
+				setToast(`แนบรูปไม่สำเร็จ — ${String(failure)}`);
+				return false;
+			}
+		},
+		[client],
+	);
+
+	const detach = useCallback(
+		async (id: string, attachmentId: string) => {
+			if (!client) return false;
+			try {
+				const card = await detachImage(client, id, attachmentId);
+				forget(id, attachmentId);
+				setSnapshot((current) => replaceCard(current, card));
+				return true;
+			} catch (failure) {
+				setToast(`ลบรูปไม่สำเร็จ — ${String(failure)}`);
+				return false;
+			}
+		},
+		[client],
 	);
 
 	const create = useCallback(
@@ -250,6 +291,8 @@ export function useBoard(client: BoardClient | null): BoardState {
 		create,
 		update,
 		answer,
+		attach,
+		detach,
 		start,
 		remove,
 		addAgent,

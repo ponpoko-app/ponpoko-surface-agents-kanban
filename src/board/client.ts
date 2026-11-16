@@ -73,6 +73,19 @@ export const saveSettings = (client: BoardClient, patch: Partial<Settings>): Pro
 
 export const mcpInfo = (client: BoardClient): Promise<McpInfo | null> => client.backend<McpInfo | null>("mcp.info");
 
+export const attachImage = (client: BoardClient, cardId: string, body: { name: string; mime: string; data_base64: string }): Promise<Card> =>
+	client.backend<Card>("card.attach", { id: cardId, ...body });
+
+export const detachImage = (client: BoardClient, cardId: string, attachmentId: string): Promise<Card> =>
+	client.backend<Card>("card.detach", { id: cardId, attachment_id: attachmentId });
+
+export const readAttachment = (
+	client: BoardClient,
+	cardId: string,
+	attachmentId: string,
+): Promise<{ mime: string; data_base64: string }> =>
+	client.backend<{ mime: string; data_base64: string }>("attachment.read", { id: cardId, attachment_id: attachmentId });
+
 export const scanAgents = (client: BoardClient): Promise<ScannedAgent[]> =>
 	client.backend<{ agents: ScannedAgent[] }>("agent.scan").then((result) => result.agents);
 

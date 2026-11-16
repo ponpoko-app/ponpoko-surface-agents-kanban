@@ -42,6 +42,15 @@ const TOOLS = [
 		inputSchema: { type: "object", properties: { agent: { type: "string" }, kind: { type: "string", enum: ["codex", "pi"] } }, required: ["agent"] },
 	},
 	{
+		name: "board_attach",
+		description: "แนบรูป (screenshot ของบั๊ก หรือ UI ที่ต้องการ) เข้ากับการ์ด เป็น base64",
+		inputSchema: {
+			type: "object",
+			properties: { card_id: { type: "string" }, name: { type: "string" }, data_base64: { type: "string" } },
+			required: ["card_id", "data_base64"],
+		},
+	},
+	{
 		name: "board_note",
 		description: "เขียนบันทึกลงการ์ด ให้คนอื่นเห็นว่าทำอะไรอยู่",
 		inputSchema: { type: "object", properties: { card_id: { type: "string" }, text: { type: "string" } }, required: ["card_id", "text"] },
@@ -90,6 +99,7 @@ const cardView = (card: ReturnType<BoardService["card"]>) => ({
 	assignee: card.assignee,
 	reviewer: card.reviewer,
 	question: card.question,
+	attachments: card.attachments.map((item) => ({ id: item.id, name: item.name, mime: item.mime })),
 	notes: card.notes.slice(-5).map((note) => note.text),
 });
 
@@ -119,6 +129,8 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 				const card = board.claimNext(agent.id);
 				return { card: card ? cardView(card) : null, agent_id: agent.id };
 			}
+			case "board_attach":
+				return cardView(board.attach(text(args, "card_id"), { name: text(args, "name"), data_base64: text(args, "data_base64") }));
 			case "board_note":
 				return cardView(board.note(text(args, "card_id"), "note", text(args, "text")));
 			case "board_block": {

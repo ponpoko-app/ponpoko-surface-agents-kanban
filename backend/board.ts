@@ -18,6 +18,7 @@ import {
 	type NoteKind,
 	type Settings,
 } from "../shared/board";
+import type { Attachments, IncomingAttachment } from "./attachments";
 import type { BoardStore } from "./store";
 
 export interface Runner {
@@ -29,6 +30,7 @@ export interface Runner {
 export interface BoardDeps {
 	store: BoardStore;
 	runner: Runner;
+	attachments: Attachments;
 	mcp?: () => McpInfo | null;
 }
 
@@ -295,9 +297,50 @@ export class BoardService {
 		return this.moveCard(id, "working");
 	}
 
+	attach(id: string, incoming: IncomingAttachment): Card {
+		const card = this.card(id);
+		const { attachment } = this.deps.attachments.save(id, incoming);
+		const at = stamp();
+		const next = addNote(
+			{ ...card, attachments: [...card.attachments, attachment], updatedAt: at },
+			{ at, kind: "note", text: `แนบรูป ${attachment.name} (${Math.round(attachment.bytes / 1024)}KB)` },
+		);
+		this.deps.store.putCard(next);
+		return next;
+	}
+
+	detach(id: string, attachmentId: string): Card {
+		const card = this.card(id);
+		const attachment = card.attachments.find((item) => item.id === attachmentId);
+		if (!attachment) throw new Error(`ไม่พบรูป ${attachmentId} บนการ์ดนี้`);
+		this.deps.attachments.remove(id, attachment);
+		const at = stamp();
+		const next = addNote(
+			{ ...card, attachments: card.attachments.filter((item) => item.id !== attachmentId), updatedAt: at },
+			{ at, kind: "note", text: `ลบรูป ${attachment.name}` },
+		);
+		this.deps.store.putCard(next);
+		return next;
+	}
+
+	attachmentPath(id: string, attachmentId: string): string {
+		const card = this.card(id);
+		const attachment = card.attachments.find((item) => item.id === attachmentId);
+		if (!attachment) throw new Error(`ไม่พบรูป ${attachmentId} บนการ์ดนี้`);
+		return this.deps.attachments.fileFor(id, attachment);
+	}
+
+	attachmentData(id: string, attachmentId: string): { mime: string; data_base64: string } {
+		const card = this.card(id);
+		const attachment = card.attachments.find((item) => item.id === attachmentId);
+		if (!attachment) throw new Error(`ไม่พบรูป ${attachmentId} บนการ์ดนี้`);
+		return this.deps.attachments.read(id, attachment);
+	}
+
 	deleteCard(id: string): Card {
 		const card = this.card(id);
 		this.deps.runner.stop(id);
+		this.deps.attachments.removeCard(id);
 		this.release(card.assignee);
 		this.release(card.reviewer);
 		this.deps.store.removeCard(id);

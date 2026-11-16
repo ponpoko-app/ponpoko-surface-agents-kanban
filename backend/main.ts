@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline";
 import { refreshConnections } from "./agent-config";
 import { BoardApp } from "./app";
+import { Attachments } from "./attachments";
 import { loadBinding, saveBinding } from "./binding";
 import { BoardService } from "./board";
 import { startMcpServer, type McpServer } from "./mcp";
@@ -19,7 +20,7 @@ const supervisor = new Supervisor({
 	cutoffMs: Number(process.env.AGENTS_KANBAN_KILL_WAIT_MS ?? 6000),
 });
 let mcp: McpServer | null = null;
-board = new BoardService({ store, runner: supervisor, mcp: () => mcp?.info ?? null });
+board = new BoardService({ store, runner: supervisor, attachments: new Attachments(directory), mcp: () => mcp?.info ?? null });
 if (process.env.AGENTS_KANBAN_NO_MCP !== "1") {
 	const binding = loadBinding(directory);
 	mcp = await startMcpServer({ board: () => board }, { port: binding?.port, token: binding?.token });

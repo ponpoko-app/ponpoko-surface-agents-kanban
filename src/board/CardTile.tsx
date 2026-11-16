@@ -50,6 +50,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 		>
 			<header className="card-head">
 				<h3>{card.title}</h3>
+				{card.attachments.length > 0 && <span className="badge attach">📎 {card.attachments.length}</span>}
 				{card.verdict === "pass" && <span className="badge pass">PASS</span>}
 				{card.verdict === "fail" && <span className="badge fail">FAIL</span>}
 			</header>

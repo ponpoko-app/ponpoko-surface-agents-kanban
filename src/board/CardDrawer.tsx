@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { LANE_LABELS, moveTargets, type Agent, type Card, type Lane } from "../../shared/board";
+import { Attachments } from "./Attachments";
+import type { BoardClient } from "./client";
+import { filesFromClipboard } from "./media";
 
 interface Props {
+	client: BoardClient;
 	card: Card;
 	agents: Agent[];
+	onAttachFiles: (cardId: string, files: File[]) => void;
+	onDetachFile: (cardId: string, attachmentId: string) => void;
 	onClose: () => void;
 	onSave: (id: string, patch: { title?: string; deliverable?: string; spec?: string; acceptance?: string; tags?: string[] }) => void;
 	onMove: (id: string, lane: Lane) => void;
@@ -16,7 +22,19 @@ const nameOf = (agents: Agent[], id: string | null): string => (id ? (agents.fin
 
 const when = (at: number): string => new Date(at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
-export function CardDrawer({ card, agents, onClose, onSave, onMove, onAnswer, onStart, onDelete }: Props) {
+export function CardDrawer({
+	client,
+	card,
+	agents,
+	onAttachFiles,
+	onDetachFile,
+	onClose,
+	onSave,
+	onMove,
+	onAnswer,
+	onStart,
+	onDelete,
+}: Props) {
 	const [title, setTitle] = useState(card.title);
 	const [deliverable, setDeliverable] = useState(card.deliverable);
 	const [spec, setSpec] = useState(card.spec);
@@ -67,7 +85,16 @@ export function CardDrawer({ card, agents, onClose, onSave, onMove, onAnswer, on
 	const touch = (): void => setSaved(false);
 
 	return (
-		<aside className="panel drawer" aria-label={`การ์ด ${card.title}`}>
+		<aside
+			className="panel drawer"
+			aria-label={`การ์ด ${card.title}`}
+			onPaste={(event) => {
+				const files = filesFromClipboard(event.nativeEvent);
+				if (files.length === 0) return;
+				event.preventDefault();
+				onAttachFiles(card.id, files);
+			}}
+		>
 			<header className="panel-head">
 				<span className="pill">{LANE_LABELS[card.lane]}</span>
 				<span className={`saved ${saved ? "quiet" : "busy"}`}>{saved ? "บันทึกแล้ว" : "กำลังบันทึก…"}</span>
@@ -121,6 +148,14 @@ export function CardDrawer({ card, agents, onClose, onSave, onMove, onAnswer, on
 					}}
 				/>
 			</label>
+
+			<Attachments
+				client={client}
+				cardId={card.id}
+				attachments={card.attachments}
+				onAttach={(files) => onAttachFiles(card.id, files)}
+				onDetach={(attachmentId) => onDetachFile(card.id, attachmentId)}
+			/>
 
 			<div className="row">
 				{card.lane === "backlog" && (

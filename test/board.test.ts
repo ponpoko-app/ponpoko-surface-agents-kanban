@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Attachments } from "../backend/attachments";
 import { BoardService, type Runner } from "../backend/board";
 import { BoardStore } from "../backend/store";
 import type { Card, CardRole } from "../shared/board";
@@ -13,7 +14,7 @@ const open = (): { store: BoardStore; board: BoardService; runner: FakeRunner } 
 	dirs.push(dir);
 	const store = new BoardStore(dir);
 	const runner = new FakeRunner();
-	const board = new BoardService({ store, runner });
+	const board = new BoardService({ store, runner, attachments: new Attachments(dir) });
 	return { store, board, runner };
 };
 
@@ -136,7 +137,7 @@ describe("the board survives a restart", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kanban-store-"));
 		dirs.push(dir);
 		const store = new BoardStore(dir);
-		const board = new BoardService({ store, runner: new FakeRunner() });
+		const board = new BoardService({ store, runner: new FakeRunner(), attachments: new Attachments(dir) });
 		const agent = board.addAgent({ name: "codex-1", kind: "codex", capabilities: ["backend"] });
 		const card = board.createCard({ title: "ปล่อย v0.1", deliverable: "tag published", tags: ["backend"] });
 		board.moveCard(card.id, "working");

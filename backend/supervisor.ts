@@ -95,10 +95,17 @@ export class Supervisor implements Runner {
 		}
 		const sessionId = role === "reviewer" ? card.sessions.reviewer : card.sessions.implementer;
 		const phase: Phase = role === "reviewer" ? "review" : sessionId ? "resume" : "start";
-		const message = buildMessage(card, role, phase, card.notes.slice(-3).map((note) => note.text).join(" | "));
+		const images = card.attachments.map((attachment) => ({
+			name: attachment.name,
+			path: board.attachmentPath(card.id, attachment.id),
+		}));
+		const message = buildMessage(card, role, phase, {
+			extra: card.notes.slice(-3).map((note) => note.text).join(" | "),
+			images,
+		});
 		let launch: ReturnType<typeof buildLaunch>;
 		try {
-			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath, sessionId });
+			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath, sessionId, images });
 		} catch (error) {
 			board.note(card.id, "system", String(error));
 			return false;

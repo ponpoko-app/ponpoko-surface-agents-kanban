@@ -55,6 +55,16 @@ export class BoardApp {
 				return this.board.answer(requireId(params), text(params, "answer"));
 			case "card.resume":
 				return this.board.resume(requireId(params));
+			case "card.attach":
+				return this.board.attach(requireId(params), {
+					name: text(params, "name"),
+					mime: text(params, "mime"),
+					data_base64: text(params, "data_base64"),
+				});
+			case "card.detach":
+				return this.board.detach(requireId(params), text(params, "attachment_id"));
+			case "attachment.read":
+				return this.board.attachmentData(requireId(params), text(params, "attachment_id"));
 			case "agent.scan":
 				return { agents: scanAgents(this.configDeps()) };
 			case "agent.connect": {

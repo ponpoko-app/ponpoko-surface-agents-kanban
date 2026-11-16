@@ -7,10 +7,15 @@ interface Row {
 	json: string;
 }
 
+const normalize = (card: Card): Card => ({ ...card, attachments: card.attachments ?? [] });
+
 export class BoardStore {
 	readonly db: Database;
 
+	readonly root: string;
+
 	constructor(directory: string) {
+		this.root = directory;
 		mkdirSync(directory, { recursive: true });
 		this.db = new Database(join(directory, "agents-kanban.sqlite3"), { create: true, strict: true });
 		this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -21,12 +26,12 @@ export class BoardStore {
 
 	cards(): Card[] {
 		const rows = this.db.query("SELECT json FROM cards ORDER BY position, updated_at, id").all() as Row[];
-		return rows.map((row) => JSON.parse(row.json) as Card);
+		return rows.map((row) => normalize(JSON.parse(row.json) as Card));
 	}
 
 	card(id: string): Card | null {
 		const row = this.db.query("SELECT json FROM cards WHERE id = ?").get(id) as Row | null;
-		return row ? (JSON.parse(row.json) as Card) : null;
+		return row ? normalize(JSON.parse(row.json) as Card) : null;
 	}
 
 	putCard(card: Card): void {

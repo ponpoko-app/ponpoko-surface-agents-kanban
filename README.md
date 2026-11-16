@@ -27,6 +27,16 @@ ponpoko surface-install --bundle dist
 
 Claude Code / opencode / Qwen ถูกตรวจพบแต่ยังเขียน config ให้อัตโนมัติไม่ได้ — หน้ารายการจะบอก url ให้ต่อเอง
 
+## รูปแนบ
+
+ในหน้าการ์ด: **ลากไฟล์มาวาง / Cmd-Ctrl+V / กด “แนบรูป”** — รองรับ PNG, JPEG, GIF, WebP ไม่เกิน 2MB ต่อรูป
+ใช้ได้ทั้งแนบ UI ที่อยากได้ (requirement) และให้ tester capture บั๊กมาแปะ
+
+- ไฟล์เก็บที่ `<app data>/surface-data/agents-kanban/attachments/<card-id>/`
+- agent เห็นรูปเป็น **พาธไฟล์ใน prompt** ของ session รอบถัดไป (codex ได้ `-i <path>` ด้วย) พร้อมคำสั่งให้เปิดดูก่อนลงมือ
+- tester ที่ต่อผ่าน MCP ใช้ tool `board_attach { card_id, name, data_base64 }` แนบ screenshot ได้เอง
+- การ์ดแสดงป้าย 📎 จำนวนรูป, กด thumbnail ดูเต็ม, ลบทีละรูปได้, ลบการ์ด = ไฟล์ถูกลบด้วย
+
 ## คอลัมน์
 
 | คอลัมน์ | ความหมาย |

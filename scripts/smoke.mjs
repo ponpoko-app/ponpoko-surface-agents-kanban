@@ -114,6 +114,19 @@ try {
     `${ready.assignee} vs ${ready.reviewer} (${reviewerAgent.id})`,
   );
 
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const attached = await rpc("card.attach", { id: created.id, name: "bug.png", data_base64: png });
+  check("card.attach stores an image on the card", attached.attachments?.length === 1 && attached.attachments[0].mime === "image/png", JSON.stringify(attached.attachments?.[0]?.name));
+  const image = await rpc("attachment.read", { id: created.id, attachment_id: attached.attachments[0].id });
+  check("attachment.read gives the bytes back", image.data_base64 === png, image.mime);
+  let refused = false;
+  try {
+    await rpc("card.attach", { id: created.id, name: "notes.txt", data_base64: Buffer.from("hello").toString("base64") });
+  } catch {
+    refused = true;
+  }
+  check("card.attach refuses a file that is not an image", refused);
+
   const scan = await rpc("agent.scan");
   check(
     "agent.scan lists the coding agents this machine could connect",
@@ -157,6 +170,15 @@ try {
   const listed = await post({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   const tools = listed.body?.result?.tools ?? [];
   check("mcp tools/list exposes the board tools", tools.length >= 5 && tools.some((tool) => tool.name === "board_claim"), tools.map((tool) => tool.name).join(","));
+
+  const attachedViaMcp = await post({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "board_attach", arguments: { card_id: created.id, name: "from-tester.png", data_base64: png } },
+  });
+  const attachedText = attachedViaMcp.body?.result?.content?.[0]?.text ?? "";
+  check("mcp board_attach lets a tester paste a screenshot onto the card", attachedText.includes("from-tester.png") || attachedText.includes("att-"), attachedText.slice(0, 120));
 
   const called = await post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "board_list", arguments: {} } });
   const content = called.body?.result?.content?.[0]?.text ?? "";
