@@ -1,0 +1,33 @@
+{
+  "id": "agents-kanban",
+  "name": "Agents Kanban",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "description": "A kanban board where coding agents pull cards over MCP, a second agent tests the work, and every card keeps its own agent session.",
+  "contributes": [
+    {
+      "slot": "nav",
+      "title": "Agents Kanban",
+      "icon": "git-branch"
+    }
+  ],
+  "backend": {
+    "command": "bin/agents-kanban-backend"
+  },
+  "methods": [
+    "app.info",
+    "board.snapshot",
+    "board.settings",
+    "card.create",
+    "card.update",
+    "card.move",
+    "card.delete",
+    "card.start",
+    "card.stop",
+    "card.answer",
+    "card.resume",
+    "agent.add",
+    "agent.remove",
+    "mcp.info"
+  ]
+}
