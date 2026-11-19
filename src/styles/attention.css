@@ -1,0 +1,137 @@
+.attention {
+	margin: 10px 16px 0;
+	padding: 10px 14px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--panel);
+}
+
+.attention-header,
+.attention-actions,
+.attention-card,
+.attention-options,
+.attention-footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.attention-header h2,
+.attention-problems h2 {
+	font-size: 13px;
+	color: var(--fg);
+	letter-spacing: 0;
+}
+
+.attention-header progress {
+	width: 68px;
+	height: 8px;
+	accent-color: var(--accent);
+}
+
+.attention-count {
+	color: var(--muted);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+
+.attention-actions,
+.attention-footer > button {
+	margin-left: auto;
+}
+
+.attention-content {
+	display: grid;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 8px 0 0;
+	border-top: 1px solid var(--line);
+	max-height: min(36vh, 300px);
+	overflow-y: auto;
+}
+
+.attention-card-link {
+	font-weight: 600;
+	text-align: start;
+}
+
+.attention-question {
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.attention-question,
+.attention-option,
+.attention-card-link,
+.attention-problems li p {
+	overflow-wrap: anywhere;
+}
+
+.attention-option {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+	max-width: 100%;
+	text-align: start;
+}
+
+.attention-option[aria-pressed="true"] {
+	background: var(--accent-soft);
+	border-color: var(--accent);
+}
+
+.attention-recommended {
+	color: var(--fg);
+	background: var(--accent-soft);
+	border-radius: 5px;
+	padding: 0 5px;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.attention-footer {
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.attention-error {
+	color: var(--danger);
+}
+
+.attention-problems {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 8px 14px;
+}
+
+.attention-problems ul {
+	display: flex;
+	gap: 8px;
+	list-style: none;
+	margin: 0;
+	padding: 1px;
+	flex: 1 1 240px;
+	min-width: 0;
+	overflow-x: auto;
+}
+
+.attention-problems li {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: min(100%, 420px);
+	padding: 5px 8px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+
+.attention-problems li span {
+	color: var(--muted);
+}
+
+.attention-problems li button {
+	white-space: nowrap;
+}

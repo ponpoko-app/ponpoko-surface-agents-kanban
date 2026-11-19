@@ -52,7 +52,7 @@ export class BoardApp {
 			case "card.stop":
 				return this.board.moveCard(requireId(params), "backlog");
 			case "card.answer":
-				return this.board.answer(requireId(params), text(params, "answer"));
+				return this.board.answer(requireId(params), text(params, "answer"), typeof params.asked_at === "number" ? params.asked_at : undefined);
 			case "card.resume":
 				return this.board.resume(requireId(params));
 			case "card.attach":

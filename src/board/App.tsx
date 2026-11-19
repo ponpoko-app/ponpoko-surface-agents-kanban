@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AgentsPanel } from "./AgentsPanel";
+import { Attention } from "./Attention";
 import { Board } from "./Board";
 import { CardDrawer } from "./CardDrawer";
 import { FirstRun } from "./FirstRun";
@@ -167,6 +168,13 @@ export function App({ client }: Props) {
 			</header>
 
 			{board.error && <p className="banner error">ต่อ backend ไม่ได้: {board.error}</p>}
+
+			<Attention
+				cards={snapshot.cards}
+				shortcuts={!openCard && !adding && !agentsOpen && !settingsOpen}
+				onAnswer={board.answer}
+				onOpen={setOpenId}
+			/>
 
 			{firstRun ? (
 				<FirstRun

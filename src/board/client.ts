@@ -59,8 +59,8 @@ export const deleteCard = (client: BoardClient, id: string): Promise<Card> => cl
 
 export const startCard = (client: BoardClient, id: string): Promise<Card> => client.backend<Card>("card.start", { id });
 
-export const answerCard = (client: BoardClient, id: string, answer: string): Promise<Card> =>
-	client.backend<Card>("card.answer", { id, answer });
+export const answerCard = (client: BoardClient, id: string, answer: string, askedAt?: number): Promise<Card> =>
+	client.backend<Card>("card.answer", { id, answer, asked_at: askedAt });
 
 export const addAgent = (client: BoardClient, input: AgentInput): Promise<Agent> =>
 	client.backend<Agent>("agent.add", { ...input });

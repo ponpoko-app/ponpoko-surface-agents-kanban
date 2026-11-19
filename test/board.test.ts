@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -183,6 +183,27 @@ describe("คำถามบนการ์ด", () => {
 		});
 		expect(board.answer(blocked.id, "/tmp/project")).toMatchObject({ lane: "working", question: null, answer: "/tmp/project" });
 		store.close();
+	});
+
+	test("คำตอบที่ค้างจากคำถามก่อนจะเปลี่ยนคำถามล่าสุดหรือคำตอบที่บันทึกแล้วไม่ได้", () => {
+		const { board } = open();
+		const { id } = board.createCard({ title: "หน้าใหม่", lane: "working" });
+		const now = Date.now();
+		using clock = spyOn(Date, "now");
+		clock.mockReturnValue(now);
+		const first = board.ask(id, question).question!;
+		const latest = board.ask(id, { ...question, text: "ใครควรแก้หน้าใหม่" }).question!;
+		expect(latest.askedAt).toBeGreaterThan(first.askedAt);
+		expect(() => board.answer(id, first.recommend, first.askedAt)).toThrow(/คำถามเปลี่ยนแล้ว/);
+		expect(board.card(id).question).toEqual(latest);
+		expect(board.answer(id, "ลูกค้า", latest.askedAt).lane).toBe("working");
+		expect(() => board.answer(id, "ทีมภายใน", latest.askedAt)).toThrow(/คำถามเปลี่ยนแล้ว/);
+		expect(board.card(id).answer).toBe("ลูกค้า");
+
+		const next = board.ask(id, question).question!;
+		expect(next.askedAt).toBeGreaterThan(latest.askedAt);
+		expect(() => board.answer(id, "ลูกค้า", latest.askedAt)).toThrow(/คำถามเปลี่ยนแล้ว/);
+		expect(board.card(id).question).toEqual(next);
 	});
 });
 

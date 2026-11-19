@@ -289,7 +289,12 @@ export class BoardService {
 	private saveQuestion(id: string, question: CardQuestion): Card {
 		const card = this.card(id);
 		if (!canMove(card.lane, "blocked")) throw new Error(`ย้ายจาก ${card.lane} ไป blocked ไม่ได้`);
-		const next = this.blocked(card, question, question.askedAt);
+		const previous = card.notes.reduce(
+			(latest, note) => note.kind === "blocked" ? Math.max(latest, note.at) : latest,
+			card.question?.askedAt ?? 0,
+		);
+		const askedAt = Math.max(question.askedAt, previous + 1);
+		const next = this.blocked(card, { ...question, askedAt }, askedAt);
 		this.deps.store.putCard(next);
 		return next;
 	}
@@ -314,8 +319,11 @@ export class BoardService {
 		return this.saveQuestion(id, { text, options: [], recommend: "", kind: "problem", askedAt: stamp() });
 	}
 
-	answer(id: string, answer: string): Card {
+	answer(id: string, answer: string, askedAt?: number): Card {
 		const card = this.card(id);
+		if (askedAt !== undefined && (card.lane !== "blocked" || card.question?.askedAt !== askedAt)) {
+			throw new Error("คำถามเปลี่ยนแล้ว กรุณาเลือกคำตอบจากคำถามล่าสุด");
+		}
 		const text = trimmed(answer);
 		if (!text) throw new Error("คำตอบว่างไม่ได้");
 		const at = stamp();

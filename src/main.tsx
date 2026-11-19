@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import "./styles/app.css";
 import "./styles/cards.css";
 import "./styles/panels.css";
+import "./styles/attention.css";
 import { App } from "./board/App";
 import { connect } from "./board/client";
 

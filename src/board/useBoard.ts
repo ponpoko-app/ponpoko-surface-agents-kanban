@@ -47,7 +47,7 @@ export interface BoardState {
 	move: (id: string, lane: Lane, position?: number) => Promise<boolean>;
 	create: (input: NewCardInput) => Promise<Card | null>;
 	update: (id: string, patch: CardPatch) => Promise<Card | null>;
-	answer: (id: string, text: string) => Promise<Card | null>;
+	answer: (id: string, text: string, askedAt?: number) => Promise<Card | null>;
 	attach: (id: string, file: File) => Promise<boolean>;
 	detach: (id: string, attachmentId: string) => Promise<boolean>;
 	start: (id: string) => Promise<Card | null>;
@@ -176,7 +176,8 @@ export function useBoard(client: BoardClient | null): BoardState {
 	);
 
 	const answer = useCallback(
-		async (id: string, value: string) => (client ? act("ส่งคำตอบ", () => answerCard(client, id, value)) : null),
+		async (id: string, value: string, askedAt?: number) =>
+			(client ? act("ส่งคำตอบ", () => answerCard(client, id, value, askedAt)) : null),
 		[act, client],
 	);
 

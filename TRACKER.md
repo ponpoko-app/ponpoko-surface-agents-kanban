@@ -79,10 +79,10 @@ G1, G2 คือสองข้อที่ทำให้ระบบยัง�
 
 ### L2 — คิวความสนใจ (Attention tray)
 
-- **ทำ**: `src/board/Attention.tsx` ใหม่ + `styles/panels.css`; `App.tsx` ต่อ tray; คีย์บอร์ด `j/k`, `1-9`, `Enter`, `a` (ยอมรับทั้งหมด), `Esc`
+- **ทำ**: `src/board/Attention.tsx` + `src/styles/attention.css` (แยกเพื่อคงเพดาน 500 บรรทัด); `App.tsx` ต่อ tray; คีย์บอร์ด `j/k`, `1-9`, `Enter`, `a` (ยอมรับทั้งหมด), `Esc`
 - **acceptance**: 5 ข้อปิดครบด้วย ≤10 interaction และ 0 การพิมพ์บังคับ; ตัวเลข `n/5` ลดลงทุกครั้ง; `a` ปิดทั้งคิวโดยใช้ `recommend` ของทุกข้อ
 - **proof**: `bun test` (ตรรกะคิว/คีย์บอร์ดเป็น pure function ที่ทดสอบได้) + `bun run typecheck`
-- **สถานะ**: todo
+- **สถานะ**: done (ดูหลักฐาน L2 ด้านล่าง)
 
 ### L3 — AI consult (Host AI) + cache
 
@@ -138,7 +138,7 @@ L5/L6 ทำสลับก่อนได้ถ้าต้องการพ�
 |---|---|---|---|
 | baseline | `bun run typecheck && bun test && bun run lint` | typecheck 0 · 62 pass / 8 ไฟล์ · lint 0 | ก่อนเริ่ม lap ใด ๆ |
 | L1 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 66 ผ่าน / 8 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; กด «ลูกค้า» ใน Ponpoko แล้วการ์ดกลับไป Working และคำถามหาย; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้ และ network-down ไม่เข้าเงื่อนไข; หลักฐาน UI ใน `trial-run/l1/` | 2026-11-19 |
-| L2 | | | |
+| L2 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 71 ผ่าน / 9 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; ตอบ 5 ข้อด้วย 5 คลิกโดยไม่พิมพ์ ตัวนับลดจาก 5/5 ถึง 1/5 แล้วคิวหาย; ยอมรับทั้งหมดใช้คำแนะนำรายข้อและเว้นปัญหาไว้; ทดสอบคีย์ลัดและไว้ก่อนใน Chromium; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้; หลักฐาน UI ใน `trial-run/l2/` | 2026-11-19 |
 | L3 | | | |
 | L4 | | | |
 | L5 | | | |
