@@ -8,6 +8,7 @@ import { QuickAdd } from "./QuickAdd";
 import { useBoard } from "./useBoard";
 import { filterCards } from "./search";
 import type { BoardClient } from "./client";
+import { createConsultation } from "./consult";
 
 interface Props {
 	client: BoardClient;
@@ -15,7 +16,10 @@ interface Props {
 
 export function App({ client }: Props) {
 	const board = useBoard(client);
+	const consult = useMemo(() => createConsultation(client), [client]);
+	const [consultReady, setConsultReady] = useState(false);
 	const [openId, setOpenId] = useState<string | null>(null);
+	const [draft, setDraft] = useState<{ id: string; askedAt: number; text: string } | null>(null);
 	const [agentsOpen, setAgentsOpen] = useState(false);
 	const [adding, setAdding] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -31,11 +35,19 @@ export function App({ client }: Props) {
 	}, [client]);
 
 	useEffect(() => {
+		let active = true;
+		setConsultReady(false);
+		void consult.available().then((available) => { if (active) setConsultReady(available); });
+		return () => { active = false; };
+	}, [consult]);
+
+	useEffect(() => {
 		const onKey = (event: KeyboardEvent): void => {
 			const target = event.target as HTMLElement | null;
 			const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
 			if (event.key === "Escape") {
 				setOpenId(null);
+				setDraft(null);
 				setAgentsOpen(false);
 				setAdding(false);
 				setSettingsOpen(false);
@@ -69,6 +81,10 @@ export function App({ client }: Props) {
 	}
 
 	const openCard = snapshot.cards.find((card) => card.id === openId) ?? null;
+	const showCard = (id: string | null): void => {
+		setDraft(null);
+		setOpenId(id);
+	};
 	const online = snapshot.agents.filter((agent) => agent.state !== "offline").length;
 	const firstRun = snapshot.cards.length === 0;
 	const repoPath = repoDraft ?? snapshot.settings.repoPath;
@@ -173,7 +189,12 @@ export function App({ client }: Props) {
 				cards={snapshot.cards}
 				shortcuts={!openCard && !adding && !agentsOpen && !settingsOpen}
 				onAnswer={board.answer}
-				onOpen={setOpenId}
+				onOpen={showCard}
+				consult={consultReady ? consult : undefined}
+				onDraft={(id, askedAt, text) => {
+					setDraft({ id, askedAt, text });
+					setOpenId(id);
+				}}
 			/>
 
 			{firstRun ? (
@@ -194,9 +215,9 @@ export function App({ client }: Props) {
 				searching={query.trim().length > 0}
 				onMove={(id, lane) => void board.move(id, lane)}
 				onCreate={(title) => void board.create({ title })}
-				onOpen={setOpenId}
+				onOpen={showCard}
 				onStart={(id) => void board.start(id)}
-				onAnswer={setOpenId}
+				onAnswer={showCard}
 			/>
 
 			{openCard && (
@@ -208,14 +229,16 @@ export function App({ client }: Props) {
 						for (const file of files) void board.attach(id, file);
 					}}
 					onDetachFile={(id, attachmentId) => void board.detach(id, attachmentId)}
-					onClose={() => setOpenId(null)}
+					onClose={() => showCard(null)}
 					onSave={(id, patch) => void board.update(id, patch)}
 					onMove={(id, lane) => void board.move(id, lane)}
-					onAnswer={(id, text) => void board.answer(id, text)}
+					onAnswer={board.answer}
+					consult={consultReady ? consult : undefined}
+					initialAnswer={draft && draft.id === openCard.id && draft.askedAt === openCard.question?.askedAt ? draft.text : undefined}
 					onStart={(id) => void board.start(id)}
 					onDelete={(id) => {
 						void board.remove(id);
-						setOpenId(null);
+						showCard(null);
 					}}
 				/>
 			)}

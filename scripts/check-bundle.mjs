@@ -88,6 +88,7 @@ async function checkSurfaceContract() {
 		const bundle = join(scratch, "bundle");
 		await mkdir(join(bundle, "bin"), { recursive: true });
 		await cp(join(PROJECT, "surface.json"), join(bundle, "surface.json"));
+		for (const file of ["ai-contract.json", "ai-requests.json"]) await cp(join(DIST, file), join(bundle, file));
 		await cp(join(DIST, "index.html"), join(bundle, "index.html"));
 		await cp(join(PROJECT, "backend"), join(bundle, "backend"), { recursive: true });
 		await cp(join(PROJECT, "shared"), join(bundle, "shared"), { recursive: true });
@@ -96,7 +97,7 @@ async function checkSurfaceContract() {
 		await chmod(launcher, 0o755);
 		const module = await import(pathToFileURL(join(SDK, "scripts", "check-surface.mjs")).href);
 		const report = await module.checkSurface(bundle);
-		assert("the SDK surface contract accepts the bundle", Boolean(report), JSON.stringify(report ?? {}));
+		assert("SDK ยอมรับสัญญา Host AI และคำขอตัวอย่าง", report?.status === "offline_contract_verified" && report.samples === 1);
 	} catch (error) {
 		bad("the SDK surface contract accepts the bundle", String(error));
 	} finally {

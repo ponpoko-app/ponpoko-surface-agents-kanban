@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Card } from "../../shared/board";
 import { adjacentIndex, attentionItems, attentionShortcut, recommendedAnswers, rememberQuestions } from "./attention-queue";
+import type { ConsultationService } from "./consult";
+import { QuestionConsult } from "./QuestionConsult";
 
 interface Props {
 	cards: readonly Card[];
 	shortcuts: boolean;
 	onAnswer: (id: string, text: string, askedAt: number) => Promise<Card | null>;
 	onOpen: (id: string) => void;
+	consult?: ConsultationService;
+	onDraft: (id: string, askedAt: number, text: string) => void;
 }
 
-export function Attention({ cards, shortcuts, onAnswer, onOpen }: Props) {
+export function Attention({ cards, shortcuts, onAnswer, onOpen, consult, onDraft }: Props) {
 	const decisions = useMemo(() => attentionItems(cards, "decision"), [cards]);
 	const problems = useMemo(() => attentionItems(cards, "problem"), [cards]);
 	const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
@@ -116,6 +120,10 @@ export function Attention({ cards, shortcuts, onAnswer, onOpen }: Props) {
 									</button>
 								))}
 							</div>
+							{consult && (
+								<QuestionConsult ask={() => consult.ask(current.id, current.question)}
+									onDraft={(draft) => onDraft(current.id, current.question.askedAt, draft)} />
+							)}
 							<footer className="attention-footer">
 								<p>ถ้ายังไม่ตอบ การ์ดจะรอคุณ</p>
 								<p className="attention-keys"><kbd>j</kbd>/<kbd>k</kbd> เลื่อน · <kbd>1-{Math.min(current.question.options.length, 9)}</kbd> เลือก · <kbd>Enter</kbd> ยืนยัน</p>

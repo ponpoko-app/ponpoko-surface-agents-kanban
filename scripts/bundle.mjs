@@ -46,6 +46,9 @@ async function main() {
   );
   if (compiled.exitCode !== 0) fail("the backend did not compile");
   await copyFile(MANIFEST, join(DIST, "surface.json"));
+  if (manifest.requires?.ai) {
+    for (const file of ["ai-contract.json", "ai-requests.json"]) await copyFile(join(PROJECT, file), join(DIST, file));
+  }
 
   const files = await walk(DIST);
   const total = files.reduce((sum, file) => sum + file.bytes, 0);

@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { LANE_LABELS, moveTargets, type Agent, type Card, type Lane } from "../../shared/board";
 import { Attachments } from "./Attachments";
+import { CardAnswer } from "./CardAnswer";
 import type { BoardClient } from "./client";
+import type { ConsultationService } from "./consult";
 import { filesFromClipboard } from "./media";
 
 interface Props {
@@ -13,7 +15,9 @@ interface Props {
 	onClose: () => void;
 	onSave: (id: string, patch: { title?: string; deliverable?: string; spec?: string; acceptance?: string; tags?: string[] }) => void;
 	onMove: (id: string, lane: Lane) => void;
-	onAnswer: (id: string, text: string) => void;
+	onAnswer: (id: string, text: string, askedAt?: number) => Promise<Card | null>;
+	consult?: ConsultationService;
+	initialAnswer?: string;
 	onStart: (id: string) => void;
 	onDelete: (id: string) => void;
 }
@@ -32,6 +36,8 @@ export function CardDrawer({
 	onSave,
 	onMove,
 	onAnswer,
+	consult,
+	initialAnswer,
 	onStart,
 	onDelete,
 }: Props) {
@@ -40,10 +46,8 @@ export function CardDrawer({
 	const [spec, setSpec] = useState(card.spec);
 	const [acceptance, setAcceptance] = useState(card.acceptance);
 	const [tags, setTags] = useState(card.tags.join(", "));
-	const [answer, setAnswer] = useState("");
 	const [confirming, setConfirming] = useState(false);
 	const [saved, setSaved] = useState(true);
-	const answerBox = useRef<HTMLTextAreaElement | null>(null);
 
 	useEffect(() => {
 		setTitle(card.title);
@@ -54,10 +58,6 @@ export function CardDrawer({
 		setConfirming(false);
 		setSaved(true);
 	}, [card.id, card.title, card.deliverable, card.spec, card.acceptance, card.tags]);
-
-	useEffect(() => {
-		if (card.lane === "blocked") answerBox.current?.focus();
-	}, [card.lane]);
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent): void => {
@@ -181,47 +181,7 @@ export function CardDrawer({
 			</p>
 
 			{card.lane === "blocked" && (
-				<div className="blocked-box">
-					<p>{card.question?.text ?? "การ์ดนี้รอคำตอบจากคุณ"}</p>
-					{card.question?.options.map((option) => {
-						const recommended = option === card.question?.recommend;
-						return (
-							<button
-								key={option}
-								type="button"
-								className={recommended ? "primary" : "ghost"}
-								onClick={() => onAnswer(card.id, option)}
-							>
-								{option}{recommended && " (แนะนำ)"}
-							</button>
-						);
-					})}
-					<textarea
-						ref={answerBox}
-						value={answer}
-						rows={3}
-						placeholder="ตอบให้ agent ทำต่อ (Enter ส่ง, Shift+Enter ขึ้นบรรทัด)"
-						onChange={(event) => setAnswer(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" && !event.shiftKey && answer.trim()) {
-								event.preventDefault();
-								onAnswer(card.id, answer.trim());
-								setAnswer("");
-							}
-						}}
-					/>
-					<button
-						type="button"
-						className="primary"
-						disabled={!answer.trim()}
-						onClick={() => {
-							onAnswer(card.id, answer.trim());
-							setAnswer("");
-						}}
-					>
-						ส่งคำตอบ
-					</button>
-				</div>
+				<CardAnswer key={`${card.id}:${card.question?.askedAt}`} card={card} onAnswer={onAnswer} consult={consult} initialAnswer={initialAnswer} />
 			)}
 
 			<div className="moves">

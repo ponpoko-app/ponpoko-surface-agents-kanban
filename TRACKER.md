@@ -29,7 +29,7 @@
 | agent kind | `codex`, `pi`, `manual` เท่านั้น (`AGENT_COMMANDS`) — claude/opencode/qwen แค่ถูก *สแกน* เจอ ยัง spawn ไม่ได้ |
 | ที่ทำงานของ agent | `settings.repoPath` **ตัวเดียว** ไม่มี worktree |
 | `board_review` | รับ verdict เป็นข้อความ ⇒ **เชื่อคำพูด** |
-| Host AI | `src/sdk/host-ai.mjs` มี `createHostAi` (contract v1: `invoke`, `validate`, `slots`, `usage`) แต่ `BoardClient` ยังไม่เปิด `call` |
+| Host AI | `BoardClient.call` ส่งคำขอผ่าน Host AI v1 โดยคิวและหน้าการ์ดใช้ผลคำอธิบายเดียวกันต่อคำถาม |
 
 ---
 
@@ -59,7 +59,7 @@
 | **G3** | agent ถามพร้อมตัวเลือกไม่ได้ ⇒ มนุษย์ต้องพิมพ์คำตอบเอง | `board_ask` บันทึก `CardQuestion` และหน้าการ์ดให้กดตัวเลือกได้ | L1 · ปิดแล้ว |
 | **G4** | agent ตายแล้วการ์ดค้าง `working` ไม่มี reclaim | `supervisor` มีแค่ `cutoffMs` ของ event ไม่มี lease TTL | L5 (มาพร้อม lease) |
 | **G5** | ไม่มีตัวเลข usage/quota ต่อ vendor | ไม่มี parser usage ที่ไหนเลย | L7 |
-| **G6** | UI เรียก Host AI ไม่ได้ | `BoardClient` เปิดแค่ `backend`, `onPalette` | L3 |
+| **G6** | UI เรียก Host AI ไม่ได้ | `src/board/consult.ts` ใช้ `BoardClient.call` กับ `host.platform / ai.request` | L3 · ปิดแล้ว |
 | G7 | spawn ได้แค่ codex/pi | `AGENT_COMMANDS` มี 2 kind | L7 |
 
 G1, G2 คือสองข้อที่ทำให้ระบบยังเป็นเดโม — ที่เหลือคือการทำให้ใช้จริงสะดวก
@@ -88,8 +88,8 @@ G1, G2 คือสองข้อที่ทำให้ระบบยัง�
 
 - **ทำ**: `BoardClient` เพิ่ม `call(namespace, operation, payload)`; `src/board/consult.ts` ใหม่ ใช้ `createHostAi`; cache ต่อ `card.id + askedAt`
 - **acceptance**: เรียก `host.platform` `ai.request` 1 ครั้งต่อคำถาม (cache hit ไม่เรียกซ้ำ); คำตอบถูกเติมลงช่องให้แก้ได้; ไม่มีการ submit อัตโนมัติ; ถ้า Host ไม่มี AI ⇒ ปุ่มถูกซ่อน ไม่ใช่ error
-- **proof**: `bun test` (cache + prompt shape) + `bun run typecheck`
-- **สถานะ**: todo
+- **proof**: `bun test test/consult.test.ts` (cache + prompt shape) + `bun run build` (รวม typecheck)
+- **สถานะ**: done (ดูหลักฐาน L3 ด้านล่าง)
 
 ### L4 — สถานะว่าง/รางวัล + การ์ดในบอร์ด
 
@@ -139,7 +139,7 @@ L5/L6 ทำสลับก่อนได้ถ้าต้องการพ�
 | baseline | `bun run typecheck && bun test && bun run lint` | typecheck 0 · 62 pass / 8 ไฟล์ · lint 0 | ก่อนเริ่ม lap ใด ๆ |
 | L1 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 66 ผ่าน / 8 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; กด «ลูกค้า» ใน Ponpoko แล้วการ์ดกลับไป Working และคำถามหาย; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้ และ network-down ไม่เข้าเงื่อนไข; หลักฐาน UI ใน `trial-run/l1/` | 2026-11-19 |
 | L2 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 71 ผ่าน / 9 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; ตอบ 5 ข้อด้วย 5 คลิกโดยไม่พิมพ์ ตัวนับลดจาก 5/5 ถึง 1/5 แล้วคิวหาย; ยอมรับทั้งหมดใช้คำแนะนำรายข้อและเว้นปัญหาไว้; ทดสอบคีย์ลัดและไว้ก่อนใน Chromium; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้; หลักฐาน UI ใน `trial-run/l2/` | 2026-11-19 |
-| L3 | | | |
+| L3 | `bun test test/consult.test.ts` · `bun run lint` · `bun run build` · `bun run check:bundle` | เทสต์ใหม่ผ่าน 5/5; typecheck, lint, build และสัญญา Host AI ผ่าน; ลองใน Chromium ด้วย Host AI จำลอง คิวและหน้าการ์ดใช้ผลเดิม ร่างแก้ได้และบันทึกเมื่อกดส่งเท่านั้น; ผล UI ใน `trial-run/l3/draft.log` | 2026-11-19 |
 | L4 | | | |
 | L5 | | | |
 | L6 | | | |

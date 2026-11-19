@@ -25,6 +25,7 @@ export interface AgentInput {
 
 export interface BoardClient {
 	backend<T>(method: string, params?: Record<string, unknown>): Promise<T>;
+	call(namespace: "host.platform" | "host.surface" | "host.work", operation: string, payload?: Record<string, unknown>): Promise<unknown>;
 	onPalette(handler: (tokens: Record<string, string>) => void): () => void;
 	dispose(): void;
 }
@@ -39,6 +40,7 @@ export async function connect(): Promise<BoardClient> {
 	}
 	return {
 		backend: (method, params) => surface.backend(method, params) as Promise<never>,
+		call: (namespace, operation, payload) => surface.call(namespace, operation, payload),
 		onPalette: (handler) => surface.onPalette(handler),
 		dispose: () => surface.dispose(),
 	};
