@@ -161,3 +161,31 @@
 .consult-result dd:last-child {
 	margin-bottom: 0;
 }
+
+.attention-cleared,
+.quiet-attention {
+	animation: quiet-attention-in 180ms ease-out;
+}
+
+.attention-cleared {
+	color: var(--muted);
+	border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.question-badge {
+	color: var(--fg);
+	background: color-mix(in srgb, var(--warn) 18%, transparent);
+	flex-shrink: 0;
+}
+
+@keyframes quiet-attention-in {
+	from { opacity: 0.35; }
+	to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.attention-cleared,
+	.quiet-attention {
+		animation: none;
+	}
+}

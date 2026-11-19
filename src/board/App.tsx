@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentsPanel } from "./AgentsPanel";
 import { Attention } from "./Attention";
 import { Board } from "./Board";
@@ -6,6 +6,7 @@ import { CardDrawer } from "./CardDrawer";
 import { FirstRun } from "./FirstRun";
 import { QuickAdd } from "./QuickAdd";
 import { useBoard } from "./useBoard";
+import { attentionSummary } from "./attention-queue";
 import { filterCards } from "./search";
 import type { BoardClient } from "./client";
 import { createConsultation } from "./consult";
@@ -26,6 +27,21 @@ export function App({ client }: Props) {
 	const [query, setQuery] = useState("");
 	const [repoDraft, setRepoDraft] = useState<string | null>(null);
 	const search = useRef<HTMLInputElement | null>(null);
+	const previousAttention = useRef(false);
+	const [cleared, setCleared] = useState(false);
+	const { hasDecisions, working } = useMemo(() => attentionSummary(board.snapshot?.cards ?? []), [board.snapshot?.cards]);
+
+	useLayoutEffect(() => {
+		if (hasDecisions) setCleared(false);
+		else if (previousAttention.current) setCleared(true);
+		previousAttention.current = hasDecisions;
+	}, [hasDecisions]);
+
+	useEffect(() => {
+		if (!cleared) return;
+		const timer = window.setTimeout(() => setCleared(false), 2400);
+		return () => window.clearTimeout(timer);
+	}, [cleared]);
 
 	useEffect(() => {
 		const dispose = client.onPalette((tokens) => {
@@ -107,6 +123,9 @@ export function App({ client }: Props) {
 							{online} ออนไลน์ · {snapshot.cards.length} การ์ด
 							{query.trim() ? ` · กรอง ${visible.length}` : ""}
 						</span>
+						{!hasDecisions && !cleared && (
+							<span className="quiet-attention hint small">ไม่มีอะไรต้องตัดสินใจ · {working} งานกำลังทำ</span>
+						)}
 					</div>
 				</div>
 
@@ -187,6 +206,8 @@ export function App({ client }: Props) {
 
 			<Attention
 				cards={snapshot.cards}
+				cleared={cleared}
+				working={working}
 				shortcuts={!openCard && !adding && !agentsOpen && !settingsOpen}
 				onAnswer={board.answer}
 				onOpen={showCard}

@@ -27,6 +27,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 	const worker = nameOf(agents, card.assignee);
 	const reviewer = nameOf(agents, card.reviewer);
 	const question = card.lane === "blocked" ? card.question?.text : null;
+	const problem = card.question?.kind === "problem";
 	const note = latest(card);
 	return (
 		<article
@@ -52,6 +53,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 		>
 			<header className="card-head">
 				<h3>{card.title}</h3>
+				{question && <span className="badge question-badge">{problem ? "⚠ ต้องแก้" : "ถาม 1 ข้อ"}</span>}
 				{card.attachments.length > 0 && <span className="badge attach">📎 {card.attachments.length}</span>}
 				{card.verdict === "pass" && <span className="badge pass">PASS</span>}
 				{card.verdict === "fail" && <span className="badge fail">FAIL</span>}
@@ -94,7 +96,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 							onAnswer(card.id);
 						}}
 					>
-						ตอบ
+						{problem ? "แก้ให้" : "ตอบ"}
 					</button>
 				)}
 			</div>

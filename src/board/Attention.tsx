@@ -6,6 +6,8 @@ import { QuestionConsult } from "./QuestionConsult";
 
 interface Props {
 	cards: readonly Card[];
+	cleared: boolean;
+	working: number;
 	shortcuts: boolean;
 	onAnswer: (id: string, text: string, askedAt: number) => Promise<Card | null>;
 	onOpen: (id: string) => void;
@@ -13,7 +15,7 @@ interface Props {
 	onDraft: (id: string, askedAt: number, text: string) => void;
 }
 
-export function Attention({ cards, shortcuts, onAnswer, onOpen, consult, onDraft }: Props) {
+export function Attention({ cards, cleared, working, shortcuts, onAnswer, onOpen, consult, onDraft }: Props) {
 	const decisions = useMemo(() => attentionItems(cards, "decision"), [cards]);
 	const problems = useMemo(() => attentionItems(cards, "problem"), [cards]);
 	const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
@@ -89,6 +91,9 @@ export function Attention({ cards, shortcuts, onAnswer, onOpen, consult, onDraft
 
 	return (
 		<>
+			{!current && cleared && (
+				<p className="attention attention-cleared" role="status">ที่เหลือเป็นเรื่องของ agent · {working} งานกำลังทำ</p>
+			)}
 			{current && (
 				<section className="attention" aria-labelledby="attention-title">
 					<header className="attention-header">

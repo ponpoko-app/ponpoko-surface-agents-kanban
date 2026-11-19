@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { emptyCard, type Card, type CardQuestion } from "../shared/board";
-import { adjacentIndex, attentionItems, attentionShortcut, recommendedAnswers, rememberQuestions } from "../src/board/attention-queue";
+import { adjacentIndex, attentionItems, attentionShortcut, attentionSummary, recommendedAnswers, rememberQuestions } from "../src/board/attention-queue";
 
 const asked = (id: string, askedAt: number, kind: CardQuestion["kind"] = "decision"): Card => ({
 	...emptyCard(id, askedAt),
@@ -9,6 +9,14 @@ const asked = (id: string, askedAt: number, kind: CardQuestion["kind"] = "decisi
 });
 
 describe("คิวคำถาม", () => {
+	test("เมื่อคำถามสุดท้ายหาย ปัญหาและงานที่หยุดไม่ถูกนับเป็นงานรอตัดสินใจหรือกำลังทำ", () => {
+		const decision = asked("ก", 1);
+		const problem = asked("ปัญหา", 2, "problem");
+		const working = { ...emptyCard("ข", 3), lane: "working" as const };
+		const interrupted = { ...working, id: "ค", interrupted: true };
+		expect(attentionSummary([decision, problem, working, interrupted])).toEqual({ hasDecisions: true, working: 1 });
+		expect(attentionSummary([problem, working, interrupted])).toEqual({ hasDecisions: false, working: 1 });
+	});
 	test("เรียงตามเวลาที่ถามและแยกปัญหาออกจากการตัดสินใจ", () => {
 		const cards = [asked("ค", 3), asked("ข", 2), asked("ก", 2), asked("ปัญหา", 1, "problem"), { ...asked("งาน", 1), lane: "working" as const }];
 		expect(attentionItems(cards, "decision").map(({ id }) => id)).toEqual(["ก", "ข", "ค"]);

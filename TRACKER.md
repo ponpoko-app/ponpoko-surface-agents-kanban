@@ -95,8 +95,8 @@ G1, G2 คือสองข้อที่ทำให้ระบบยัง�
 
 - **ทำ**: empty state ของ tray ("ไม่มีอะไรต้องตัดสินใจ · N งานกำลังทำ"), `CardTile` badge "ถาม 1 ข้อ"/"⚠ ต้องแก้", `CardDrawer` แสดงบล็อกคำถามแบบใหม่
 - **acceptance**: ปิดข้อสุดท้ายแล้ว tray ว่างภายใน 1 เฟรมและแสดงบรรทัด "ที่เหลือเป็นเรื่องของ agent"; การ์ดชนิด `problem` ไม่ปรากฏในคิวคำถาม
-- **proof**: `bun test` + `bun run typecheck`
-- **สถานะ**: todo
+- **proof**: `bun test test/attention.test.ts` + `bun run build` และทดสอบ UI ใน Chromium
+- **สถานะ**: done (ดูหลักฐาน L4 ด้านล่าง)
 
 ### L5 — ARENA + LEASE (การ์ด 1 ใบ = worktree 1 อัน)
 
@@ -140,7 +140,7 @@ L5/L6 ทำสลับก่อนได้ถ้าต้องการพ�
 | L1 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 66 ผ่าน / 8 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; กด «ลูกค้า» ใน Ponpoko แล้วการ์ดกลับไป Working และคำถามหาย; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้ และ network-down ไม่เข้าเงื่อนไข; หลักฐาน UI ใน `trial-run/l1/` | 2026-11-19 |
 | L2 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 71 ผ่าน / 9 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; ตอบ 5 ข้อด้วย 5 คลิกโดยไม่พิมพ์ ตัวนับลดจาก 5/5 ถึง 1/5 แล้วคิวหาย; ยอมรับทั้งหมดใช้คำแนะนำรายข้อและเว้นปัญหาไว้; ทดสอบคีย์ลัดและไว้ก่อนใน Chromium; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้; หลักฐาน UI ใน `trial-run/l2/` | 2026-11-19 |
 | L3 | `bun test test/consult.test.ts` · `bun run lint` · `bun run build` · `bun run check:bundle` | เทสต์ใหม่ผ่าน 5/5; typecheck, lint, build และสัญญา Host AI ผ่าน; ลองใน Chromium ด้วย Host AI จำลอง คิวและหน้าการ์ดใช้ผลเดิม ร่างแก้ได้และบันทึกเมื่อกดส่งเท่านั้น; ผล UI ใน `trial-run/l3/draft.log` | 2026-11-19 |
-| L4 | | | |
+| L4 | `bun test test/attention.test.ts` · `bun run build` · Chromium | 5/5 ผ่านและ build ผ่าน; หลังส่งคำตอบข้อสุดท้าย ตัวเลือกหายและข้อความปรากฏ จากนั้นย้ายไปแถบบน ขณะที่ปัญหายังถูกแสดง | 2026-11-19 |
 | L5 | | | |
 | L6 | | | |
 | L7 | | | |

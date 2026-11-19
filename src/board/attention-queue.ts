@@ -13,6 +13,16 @@ export function attentionItems(cards: readonly Card[], kind: CardQuestion["kind"
 	).sort((first, second) => first.question.askedAt - second.question.askedAt || first.id.localeCompare(second.id));
 }
 
+export function attentionSummary(cards: readonly Card[]) {
+	let hasDecisions = false;
+	let working = 0;
+	for (const card of cards) {
+		if (card.lane === "blocked" && card.question?.kind === "decision") hasDecisions = true;
+		if (card.lane === "working" && !card.interrupted) working++;
+	}
+	return { hasDecisions, working };
+}
+
 export function rememberQuestions(previous: ReadonlySet<string>, items: readonly AttentionItem[]): ReadonlySet<string> {
 	if (!items.length) return previous.size ? new Set() : previous;
 	const added = items.filter(({ key }) => !previous.has(key));

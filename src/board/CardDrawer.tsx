@@ -105,6 +105,10 @@ export function CardDrawer({
 
 			<input className="title-input" value={title} onChange={(event) => { setTitle(event.target.value); touch(); }} />
 
+			{card.lane === "blocked" && (
+				<CardAnswer key={`${card.id}:${card.question?.askedAt}`} card={card} onAnswer={onAnswer} consult={consult} initialAnswer={initialAnswer} />
+			)}
+
 			<label>
 				deliverable ที่ปิดให้จบ
 				<input
@@ -179,10 +183,6 @@ export function CardDrawer({
 				ทำ: {nameOf(agents, card.assignee)} · ตรวจ: {nameOf(agents, card.reviewer)} · session:{" "}
 				{card.sessions.implementer ? "มีแล้ว" : "ยังไม่มี"}
 			</p>
-
-			{card.lane === "blocked" && (
-				<CardAnswer key={`${card.id}:${card.question?.askedAt}`} card={card} onAnswer={onAnswer} consult={consult} initialAnswer={initialAnswer} />
-			)}
 
 			<div className="moves">
 				<span className="hint small">ย้ายไป</span>

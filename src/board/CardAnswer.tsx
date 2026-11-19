@@ -31,7 +31,8 @@ export function CardAnswer({ card, consult, initialAnswer, onAnswer }: Props) {
 	};
 
 	return (
-		<div className="blocked-box">
+		<section className="blocked-box" aria-label={question?.kind === "problem" ? "ต้องแก้ไข" : "รอคำตอบ"}>
+			<h3>{question?.kind === "problem" ? "ต้องแก้ไข" : "รอคำตอบ"}</h3>
 			<p>{question?.text ?? "การ์ดนี้รอคำตอบจากคุณ"}</p>
 			{question?.options.map((option) => (
 				<button key={option} type="button" disabled={sending} className={option === question.recommend ? "primary" : "ghost"}
@@ -65,6 +66,6 @@ export function CardAnswer({ card, consult, initialAnswer, onAnswer }: Props) {
 			<button type="button" className="primary" disabled={sending || !answer.trim()} onClick={() => void submit(answer.trim())}>
 				ส่งคำตอบ
 			</button>
-		</div>
+		</section>
 	);
 }
