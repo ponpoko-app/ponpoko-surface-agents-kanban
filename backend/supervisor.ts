@@ -20,6 +20,8 @@ interface Run {
 	lastNoteAt: number;
 	lastText: string;
 	stderr: string[];
+	stopping: boolean;
+	restartRole: CardRole | null;
 }
 
 const NOTE_GAP_MS = 1500;
@@ -67,7 +69,11 @@ export class Supervisor implements Runner {
 	}
 
 	start(card: Card, role: CardRole): boolean {
-		if (this.runs.has(card.id)) return true;
+		const current = this.runs.get(card.id);
+		if (current) {
+			if (current.stopping) current.restartRole = role;
+			return true;
+		}
 		const board = this.deps.board();
 		const settings = this.deps.store.settings();
 		if (this.runs.size >= settings.maxConcurrent) {
@@ -133,6 +139,8 @@ export class Supervisor implements Runner {
 			lastNoteAt: 0,
 			lastText: "",
 			stderr: [],
+			stopping: false,
+			restartRole: null,
 		};
 		this.runs.set(card.id, run);
 		board.note(card.id, "event", `${agent.name} เริ่มทำงาน (${launch.command})`);
@@ -181,6 +189,14 @@ export class Supervisor implements Runner {
 		this.runs.delete(run.cardId);
 		const board = this.deps.board();
 		const card = this.deps.store.card(run.cardId);
+		if (run.stopping) {
+			board.release(run.agentId);
+			const role = run.restartRole;
+			if (card && role && (role === "reviewer" ? card.lane === "ready_to_test" : card.lane === "working" || card.lane === "fix")) {
+				this.start(card, role);
+			}
+			return;
+		}
 		if (!card) {
 			board.release(run.agentId);
 			return;
@@ -206,10 +222,12 @@ export class Supervisor implements Runner {
 	stop(cardId: string): void {
 		const run = this.runs.get(cardId);
 		if (!run) return;
+		run.restartRole = null;
+		if (run.stopping) return;
+		run.stopping = true;
 		this.signal(run, "SIGTERM");
 		const timer = setTimeout(() => {
-			const still = this.runs.get(cardId);
-			if (still) this.signal(still, "SIGKILL");
+			if (this.runs.get(cardId) === run) this.signal(run, "SIGKILL");
 		}, this.cutoff);
 		timer.unref?.();
 	}
@@ -228,14 +246,7 @@ export class Supervisor implements Runner {
 	}
 
 	stopAll(): void {
-		for (const run of this.runs.values()) {
-			this.signal(run, "SIGTERM");
-			const timer = setTimeout(() => {
-				const still = this.runs.get(run.cardId);
-				if (still) this.signal(still, "SIGKILL");
-			}, this.cutoff);
-			timer.unref?.();
-		}
+		for (const cardId of this.runs.keys()) this.stop(cardId);
 	}
 
 	sweep(): Card[] {

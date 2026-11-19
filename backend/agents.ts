@@ -85,6 +85,10 @@ export const buildMessage = (card: Card, role: CardRole, phase: Phase, opts: Mes
 			"จบงานแล้วเลื่อนการ์ดไป ready to test ด้วย tool board_submit",
 		);
 	}
+	if (role === "implementer") {
+		if (card.answer) lines.push(`คำตอบจากผู้ใช้: ${card.answer}`);
+		lines.push("ถ้าต้องให้ผู้ใช้ตัดสินใจ ให้ใช้ board_ask พร้อม text, options และ recommend แล้วรอคำตอบ");
+	}
 	const body = lines.filter((line, index) => line.length > 0 || index === lines.length - 1);
 	return [...body, ...imageLines(opts.images ?? [])].join("\n");
 };

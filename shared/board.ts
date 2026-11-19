@@ -73,6 +73,14 @@ export interface Attachment {
 	createdAt: number;
 }
 
+export interface CardQuestion {
+	text: string;
+	options: string[];
+	recommend: string;
+	kind: "decision" | "problem";
+	askedAt: number;
+}
+
 export interface Card {
 	id: string;
 	title: string;
@@ -85,7 +93,7 @@ export interface Card {
 	assignee: string | null;
 	reviewer: string | null;
 	sessions: CardSessions;
-	question: string | null;
+	question: CardQuestion | null;
 	answer: string | null;
 	verdict: string | null;
 	interrupted: boolean;

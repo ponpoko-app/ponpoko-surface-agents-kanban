@@ -132,4 +132,27 @@ describe("a card's worker process", () => {
 		expect(moved.notes.at(-1)?.text).toContain("ยังไม่มี agent ว่าง");
 		independent.store.close();
 	});
+
+	test("คำตอบที่มาทันทีจะเปิด session เดิมหลัง process ที่ถูกพักจบ", async () => {
+		const { board, store, supervisor } = setup(join(root, "answer"));
+		try {
+			board.addAgent({ name: "codex-answer", kind: "codex" });
+			const { id } = board.createCard({ title: "เลือกผู้ชม" });
+			board.moveCard(id, "working");
+			expect(await waitFor(() => store.card(id)?.sessions.implementer === "thread-1")).toBe(true);
+			const previousArgs = readFileSync(argsFile, "utf8").length;
+
+			board.ask(id, { text: "ใครควรเห็นหน้านี้", options: ["ทีมภายใน", "ลูกค้า"], recommend: "ทีมภายใน" });
+			board.answer(id, "ลูกค้า");
+			expect(await waitFor(() => {
+				const resumedArgs = readFileSync(argsFile, "utf8").slice(previousArgs);
+				return resumedArgs.includes("resume thread-1") && resumedArgs.includes("คำตอบจากผู้ใช้: ลูกค้า");
+			})).toBe(true);
+			expect(store.card(id)).toMatchObject({ lane: "working", question: null, answer: "ลูกค้า" });
+		} finally {
+			supervisor.stopAll();
+			await waitFor(() => supervisor.live().size === 0);
+			store.close();
+		}
+	});
 });

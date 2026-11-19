@@ -7,7 +7,19 @@ interface Row {
 	json: string;
 }
 
-const normalize = (card: Card): Card => ({ ...card, attachments: card.attachments ?? [] });
+type StoredCard = Omit<Card, "question"> & { question?: Card["question"] | string };
+
+const readCard = (row: Row): Card => {
+	const card = JSON.parse(row.json) as StoredCard;
+	const question = card.lane === "blocked" ? card.question : null;
+	return {
+		...card,
+		attachments: card.attachments ?? [],
+		question: typeof question === "string"
+			? { text: question, options: [], recommend: "", kind: "problem", askedAt: card.updatedAt }
+			: question ?? null,
+	};
+};
 
 export class BoardStore {
 	readonly db: Database;
@@ -26,12 +38,12 @@ export class BoardStore {
 
 	cards(): Card[] {
 		const rows = this.db.query("SELECT json FROM cards ORDER BY position, updated_at, id").all() as Row[];
-		return rows.map((row) => normalize(JSON.parse(row.json) as Card));
+		return rows.map(readCard);
 	}
 
 	card(id: string): Card | null {
 		const row = this.db.query("SELECT json FROM cards WHERE id = ?").get(id) as Row | null;
-		return row ? normalize(JSON.parse(row.json) as Card) : null;
+		return row ? readCard(row) : null;
 	}
 
 	putCard(card: Card): void {

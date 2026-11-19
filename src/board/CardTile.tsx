@@ -26,6 +26,8 @@ const latest = (card: Card): string => {
 export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart, onDragEnd, onDragOver }: Props) {
 	const worker = nameOf(agents, card.assignee);
 	const reviewer = nameOf(agents, card.reviewer);
+	const question = card.lane === "blocked" ? card.question?.text : null;
+	const note = latest(card);
 	return (
 		<article
 			className={`card lane-${card.lane}`}
@@ -55,7 +57,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 				{card.verdict === "fail" && <span className="badge fail">FAIL</span>}
 			</header>
 			{card.deliverable && <p className="card-deliverable">ปิดให้จบ: {card.deliverable}</p>}
-			{card.lane === "blocked" && card.question && <p className="card-question">ถาม: {card.question}</p>}
+		{question && <p className="card-question">{question}</p>}
 			{card.tags.length > 0 && (
 				<ul className="chips">
 					{card.tags.map((tag) => (
@@ -65,7 +67,7 @@ export function CardTile({ card, agents, onOpen, onStart, onAnswer, onDragStart,
 					))}
 				</ul>
 			)}
-			<p className="card-note">{latest(card)}</p>
+		{note && note !== question && <p className="card-note">{note}</p>}
 			<footer className="card-foot">
 				<span className="who">{worker ? `ทำ: ${worker}` : "ยังไม่มีคนทำ"}</span>
 				{reviewer && <span className="who">ตรวจ: {reviewer}</span>}

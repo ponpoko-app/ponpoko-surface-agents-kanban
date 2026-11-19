@@ -12,6 +12,7 @@ import {
 	type AgentKind,
 	type BoardSnapshot,
 	type Card,
+	type CardQuestion,
 	type CardRole,
 	type Lane,
 	type McpInfo,
@@ -219,7 +220,7 @@ export class BoardService {
 			case "working": {
 				const assignment = card.assignee ? null : pickAssignee(card, agents);
 				const assignee = card.assignee ?? assignment?.agentId ?? null;
-				let next: Card = { ...card, lane, assignee, interrupted: false, updatedAt: at };
+				let next: Card = { ...card, lane, assignee, question: null, interrupted: false, updatedAt: at };
 				if (assignment) next = addNote(next, { at, kind: "move", text: `มอบหมายให้ ${assignment.agentId} — ${assignment.reason}` });
 				if (!assignee) {
 					return addNote(next, { at, kind: "event", text: "ยังไม่มี agent ว่าง งานรออยู่ — ลากการ์ดเองหรือเพิ่ม agent" });
@@ -233,8 +234,7 @@ export class BoardService {
 				return next;
 			}
 			case "blocked": {
-				this.deps.runner.stop(card.id);
-				return addNote({ ...card, lane, updatedAt: at }, { at, kind: "blocked", text: "รอคำตอบจากคุณ" });
+				return this.blocked(card, null, at);
 			}
 			case "ready_to_test": {
 				this.deps.runner.stop(card.id);
@@ -278,14 +278,51 @@ export class BoardService {
 		return noted;
 	}
 
+	private blocked(card: Card, question: CardQuestion | null, at: number): Card {
+		this.deps.runner.stop(card.id);
+		return addNote(
+			{ ...card, lane: "blocked", question, answer: null, interrupted: false },
+			{ at, kind: "blocked", text: question?.text.slice(0, 4000) ?? "รอคำตอบจากคุณ" },
+		);
+	}
+
+	private saveQuestion(id: string, question: CardQuestion): Card {
+		const card = this.card(id);
+		if (!canMove(card.lane, "blocked")) throw new Error(`ย้ายจาก ${card.lane} ไป blocked ไม่ได้`);
+		const next = this.blocked(card, question, question.askedAt);
+		this.deps.store.putCard(next);
+		return next;
+	}
+
+	ask(id: string, input: { text: unknown; options: unknown; recommend: unknown; kind?: unknown }): Card {
+		const text = trimmed(input.text);
+		const recommend = trimmed(input.recommend);
+		const kind = input.kind === undefined ? "decision" : input.kind;
+		if (!text) throw new Error("กรุณาระบุคำถาม");
+		if (kind !== "decision" && kind !== "problem") throw new Error("ชนิดคำถามต้องเป็น decision หรือ problem");
+		const options = Array.isArray(input.options) ? input.options.map(trimmed) : [];
+		if (options.length < 2 || options.some((option) => !option) || new Set(options).size !== options.length) {
+			throw new Error("กรุณาระบุตัวเลือกที่ต่างกันอย่างน้อย 2 ข้อ");
+		}
+		if (!recommend || !options.includes(recommend)) throw new Error("คำแนะนำต้องตรงกับหนึ่งในตัวเลือก");
+		return this.saveQuestion(id, { text, options, recommend, kind, askedAt: stamp() });
+	}
+
+	block(id: string, question: string): Card {
+		const text = trimmed(question);
+		if (!text) throw new Error("กรุณาระบุสิ่งที่ติดขัด");
+		return this.saveQuestion(id, { text, options: [], recommend: "", kind: "problem", askedAt: stamp() });
+	}
+
 	answer(id: string, answer: string): Card {
 		const card = this.card(id);
 		const text = trimmed(answer);
 		if (!text) throw new Error("คำตอบว่างไม่ได้");
 		const at = stamp();
-		const noted = addNote({ ...card, answer: text, updatedAt: at }, { at, kind: "answer", text });
-		this.deps.store.putCard(noted);
-		return card.lane === "blocked" ? this.moveCard(id, "working") : noted;
+		const noted = addNote({ ...card, answer: text, question: null }, { at, kind: "answer", text });
+		const next = card.lane === "blocked" ? this.step(noted, "working", at) : noted;
+		this.deps.store.putCard(next);
+		return next;
 	}
 
 	resume(id: string): Card {

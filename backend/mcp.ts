@@ -56,6 +56,21 @@ const TOOLS = [
 		inputSchema: { type: "object", properties: { card_id: { type: "string" }, text: { type: "string" } }, required: ["card_id", "text"] },
 	},
 	{
+		name: "board_ask",
+		description: "ถามผู้ใช้โดยให้ตัวเลือกและแนะนำหนึ่งข้อ การ์ดจะพักไว้จนกว่าจะได้รับคำตอบ",
+		inputSchema: {
+			type: "object",
+			properties: {
+				card_id: { type: "string" },
+				text: { type: "string", minLength: 1 },
+				options: { type: "array", items: { type: "string", minLength: 1 }, minItems: 2, uniqueItems: true },
+				recommend: { type: "string", description: "ข้อความที่ตรงกับหนึ่งใน options" },
+				kind: { type: "string", enum: ["decision", "problem"], default: "decision" },
+			},
+			required: ["card_id", "text", "options", "recommend"],
+		},
+	},
+	{
 		name: "board_block",
 		description: "หยุดการ์ดเพื่อรอคำตอบจากมนุษย์ (credential, การอนุมัติ publish ฯลฯ)",
 		inputSchema: { type: "object", properties: { card_id: { type: "string" }, question: { type: "string" } }, required: ["card_id", "question"] },
@@ -99,6 +114,7 @@ const cardView = (card: ReturnType<BoardService["card"]>) => ({
 	assignee: card.assignee,
 	reviewer: card.reviewer,
 	question: card.question,
+	answer: card.answer,
 	attachments: card.attachments.map((item) => ({ id: item.id, name: item.name, mime: item.mime })),
 	notes: card.notes.slice(-5).map((note) => note.text),
 });
@@ -133,11 +149,10 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 				return cardView(board.attach(text(args, "card_id"), { name: text(args, "name"), data_base64: text(args, "data_base64") }));
 			case "board_note":
 				return cardView(board.note(text(args, "card_id"), "note", text(args, "text")));
-			case "board_block": {
-				const id = text(args, "card_id");
-				board.note(id, "blocked", text(args, "question"));
-				return cardView(board.moveCard(id, "blocked" as Lane));
-			}
+			case "board_ask":
+				return cardView(board.ask(text(args, "card_id"), { text: args.text, options: args.options, recommend: args.recommend, kind: args.kind }));
+			case "board_block":
+				return cardView(board.block(text(args, "card_id"), text(args, "question")));
 			case "board_submit": {
 				const id = text(args, "card_id");
 				board.note(id, "note", text(args, "summary") || "ส่งงานให้ตรวจ");

@@ -182,7 +182,20 @@ export function CardDrawer({
 
 			{card.lane === "blocked" && (
 				<div className="blocked-box">
-					<p>{card.question ?? "การ์ดนี้รอคำตอบจากคุณ"}</p>
+					<p>{card.question?.text ?? "การ์ดนี้รอคำตอบจากคุณ"}</p>
+					{card.question?.options.map((option) => {
+						const recommended = option === card.question?.recommend;
+						return (
+							<button
+								key={option}
+								type="button"
+								className={recommended ? "primary" : "ghost"}
+								onClick={() => onAnswer(card.id, option)}
+							>
+								{option}{recommended && " (แนะนำ)"}
+							</button>
+						);
+					})}
 					<textarea
 						ref={answerBox}
 						value={answer}

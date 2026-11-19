@@ -132,6 +132,60 @@ describe("the card lifecycle", () => {
 	});
 });
 
+describe("คำถามบนการ์ด", () => {
+	const question = { text: "ใครควรเห็นหน้าใหม่", options: ["ทีมภายใน", "ลูกค้า"], recommend: "ทีมภายใน" };
+
+	test("คำถามหยุดการทำงานและคำตอบล้างคำถามก่อนส่งงานคืนให้ agent", () => {
+		const { board, runner } = open();
+		board.addAgent({ name: "codex-1", kind: "codex" });
+		const { id } = board.createCard({ title: "หน้าใหม่" });
+		board.moveCard(id, "working");
+		const asked = board.ask(id, question);
+		expect(asked.lane).toBe("blocked");
+		expect(asked.question).toEqual({ ...question, kind: "decision", askedAt: asked.updatedAt });
+		expect(board.snapshot().cards[0].question).toEqual(asked.question);
+		expect(runner.stopped).toEqual([id]);
+		expect(() => board.answer(id, " ")).toThrow(/คำตอบว่าง/);
+		expect(board.card(id).question).toEqual(asked.question);
+
+		const answered = board.answer(id, "ลูกค้า");
+		expect(answered.lane).toBe("working");
+		expect(answered.answer).toBe("ลูกค้า");
+		expect(answered.question).toBeNull();
+		expect(board.card(id)).toEqual(answered);
+		expect(runner.started).toEqual([{ id, role: "implementer" }, { id, role: "implementer" }]);
+
+		const next = board.ask(id, { ...question, kind: "problem" });
+		expect(next.answer).toBeNull();
+		expect(next.question?.kind).toBe("problem");
+	});
+
+	test("คำถามผิดรูปแบบและการ์ดที่ยังไม่ทำงานไม่เปลี่ยนสถานะหรือหยุด agent", () => {
+		const { board, runner } = open();
+		const { id } = board.createCard({ title: "หน้าใหม่" });
+		expect(() => board.ask(id, question)).toThrow(/ย้ายจาก/);
+		const working = board.moveCard(id, "working");
+		expect(() => board.ask(id, { ...question, options: ["ทีมภายใน"] })).toThrow(/อย่างน้อย 2/);
+		expect(() => board.ask(id, { ...question, options: ["ทีมภายใน", " ทีมภายใน "] })).toThrow(/ต่างกัน/);
+		expect(() => board.ask(id, { ...question, recommend: undefined })).toThrow(/คำแนะนำ/);
+		expect(() => board.ask(id, { ...question, recommend: "ทุกคน" })).toThrow(/คำแนะนำ/);
+		expect(board.card(id)).toEqual(working);
+		expect(runner.stopped).toEqual([]);
+	});
+
+	test("คำถามแบบข้อความที่บันทึกไว้ยังแสดงและตอบจากการ์ดเดิมได้", () => {
+		const { board, store } = open();
+		const blocked = board.createCard({ title: "หน้าเดิม", lane: "blocked" });
+		const legacy = "ขอพาธของโปรเจกต์";
+		store.db.query("UPDATE cards SET json = ? WHERE id = ?").run(JSON.stringify({ ...blocked, question: legacy }), blocked.id);
+		expect(board.snapshot().cards[0].question).toEqual({
+			text: legacy, options: [], recommend: "", kind: "problem", askedAt: blocked.updatedAt,
+		});
+		expect(board.answer(blocked.id, "/tmp/project")).toMatchObject({ lane: "working", question: null, answer: "/tmp/project" });
+		store.close();
+	});
+});
+
 describe("the board survives a restart", () => {
 	test("cards, agents, sessions and settings come back from the same data directory", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kanban-store-"));

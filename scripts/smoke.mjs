@@ -171,6 +171,28 @@ try {
   const tools = listed.body?.result?.tools ?? [];
   check("mcp tools/list exposes the board tools", tools.length >= 5 && tools.some((tool) => tool.name === "board_claim"), tools.map((tool) => tool.name).join(","));
 
+  const decision = await rpc("card.create", { title: "เลือกผู้ชมของรายงาน" });
+  await rpc("card.move", { id: decision.id, lane: "working" });
+  const question = { text: "ให้ใครเห็นรายงาน", options: ["ทีมภายใน", "ลูกค้า"], recommend: "ทีมภายใน" };
+  const ask = async (id, args) => (await post({
+    jsonrpc: "2.0", id, method: "tools/call",
+    params: { name: "board_ask", arguments: { card_id: decision.id, ...args } },
+  })).body?.result;
+  const noChoice = await ask(5, { ...question, options: ["ทีมภายใน"] });
+  const noRecommendation = await ask(6, { text: question.text, options: question.options });
+  const beforeAsk = (await rpc("board.snapshot")).cards.find((card) => card.id === decision.id);
+  check("board_ask ปฏิเสธคำถามที่ตัวเลือกไม่ครบหรือขาดคำแนะนำ", noChoice?.isError === true && noRecommendation?.isError === true && beforeAsk?.lane === "working" && beforeAsk?.question === null);
+
+  const asked = await ask(7, question);
+  const afterAsk = (await rpc("board.snapshot")).cards.find((card) => card.id === decision.id);
+  const reply = await rpc("card.answer", { id: decision.id, answer: "ลูกค้า" });
+  check(
+    "การ์ดแสดงคำถามจาก MCP และกลับมาทำงานหลังผู้ใช้เลือกคำตอบ",
+    !asked?.isError && afterAsk?.lane === "blocked" && afterAsk?.question?.text === question.text &&
+      afterAsk.question.options.join("|") === question.options.join("|") && afterAsk.question.recommend === question.recommend &&
+      reply.lane === "working" && reply.question === null && reply.answer === "ลูกค้า",
+  );
+
   const attachedViaMcp = await post({
     jsonrpc: "2.0",
     id: 4,
