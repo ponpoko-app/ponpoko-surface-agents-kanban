@@ -132,6 +132,8 @@
 
 .note.kind-review {
 	border-left-color: var(--info);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 .note.kind-answer {

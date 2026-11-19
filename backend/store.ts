@@ -15,6 +15,7 @@ const readCard = (row: Row): Card => {
 	return {
 		...card,
 		attachments: card.attachments ?? [],
+		checks: card.checks ?? [],
 		question: typeof question === "string"
 			? { text: question, options: [], recommend: "", kind: "problem", askedAt: card.updatedAt }
 			: question ?? null,

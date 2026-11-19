@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,12 +106,11 @@ try {
   }
   check("card.move rejects an illegal transition (working → done)", rejected);
 
-  const reviewerAgent = await rpc("agent.add", { name: "pi-1", kind: "pi", capabilities: ["backend"] });
+  await rpc("agent.add", { name: "pi-1", kind: "pi", capabilities: ["backend"] });
   const ready = await rpc("card.move", { id: created.id, lane: "ready_to_test" });
   check(
-    "ready_to_test picks a reviewer that is not the implementer",
-    ready.reviewer !== null && ready.reviewer !== ready.assignee,
-    `${ready.assignee} vs ${ready.reviewer} (${reviewerAgent.id})`,
+    "การ์ดพร้อมรันคำสั่งตรวจโดยไม่ต้องจอง agent เพิ่ม",
+    ready.lane === "ready_to_test" && ready.reviewer === null,
   );
 
   const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -205,6 +204,31 @@ try {
   const called = await post({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "board_list", arguments: {} } });
   const content = called.body?.result?.content?.[0]?.text ?? "";
   check("mcp tools/call board_list returns the cards", content.includes(created.id), content.slice(0, 160));
+
+  const repo = join(directory, "repo");
+  await mkdir(repo);
+  await writeFile(join(repo, "proof.txt"), "ต้นฉบับ");
+  const git = (...args) => {
+    const result = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
+    if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+    return result.stdout.toString();
+  };
+  git("init", "-q");
+  git("add", "proof.txt");
+  git("-c", "user.name=Kanban", "-c", "user.email=kanban@example.test", "commit", "-qm", "เริ่มต้น");
+  await rpc("board.settings", { patch: { repoPath: repo } });
+  const gate = await rpc("card.create", { title: "พิสูจน์ก่อนปิด", lane: "working" });
+  const submit = async (checks) => {
+    const reply = (await post({ jsonrpc: "2.0", id: 8, method: "tools/call", params: {
+      name: "board_submit", arguments: { card_id: gate.id, checks },
+    } })).body.result;
+    return reply.isError ? reply : JSON.parse(reply.content[0].text);
+  };
+  check("board_submit ต้องมีคำสั่งตรวจ", (await submit([])).isError === true);
+  const red = await submit(["printf 'ตรวจพบข้อผิดพลาด'; exit 7"]);
+  check("คำสั่งตรวจไม่ผ่านแล้วการ์ดยังเปิดและเก็บ output", red.lane === "working" && red.notes.some((note) => note.includes("exit 7") && note.includes("ตรวจพบข้อผิดพลาด")));
+  const green = await submit([`test "$(git branch --show-current)" = "agents-kanban/${gate.id}" && cat proof.txt`]);
+  check("บอร์ดรันคำสั่งใน worktree จริงและปิดการ์ดเมื่อผ่าน", green.lane === "done" && green.notes.some((note) => note.includes("exit 0") && note.includes("ต้นฉบับ")) && git("status", "--porcelain") === "");
 
   exitCode = failures.length === 0 ? 0 : 1;
 } catch (error) {

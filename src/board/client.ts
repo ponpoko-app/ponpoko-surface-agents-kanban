@@ -14,6 +14,7 @@ export interface CardPatch {
 	deliverable?: string;
 	spec?: string;
 	acceptance?: string;
+	checks?: string[];
 	tags?: string[];
 }
 

@@ -80,14 +80,15 @@ export const buildMessage = (card: Card, role: CardRole, phase: Phase, opts: Mes
 		);
 	} else {
 		lines.push(
-			"ทำงานจน deliverable มีอยู่จริง (build, deploy, release หรือ publish ให้ปิดจบ)",
+			"ทำงานจนสิ่งส่งมอบมีอยู่จริงใน worktree แล้วส่งให้ผู้ใช้ตัดสินใจว่าจะ merge, deploy หรือ publish เมื่อไร",
 			"รันคำสั่งตรวจของโปรเจกต์เองก่อนบอกว่าเสร็จ",
 			"อย่าแก้ไฟล์นอก repo นี้",
-			"จบงานแล้วเลื่อนการ์ดไป ready to test ด้วย tool board_submit",
 		);
 	}
 	if (role === "implementer") {
 		if (card.answer) lines.push(`คำตอบจากผู้ใช้: ${card.answer}`);
+		if (extra) lines.push(`บันทึกล่าสุดของการ์ด: ${extra}`);
+		lines.push("จบงานแล้วส่งด้วย board_submit พร้อม checks ที่พิสูจน์เกณฑ์ของการ์ด บอร์ดจะหยุด process นี้และรัน checks ใน worktree เดิม");
 		lines.push("ถ้าต้องให้ผู้ใช้ตัดสินใจ ให้ใช้ board_ask พร้อม text, options และ recommend แล้วรอคำตอบ");
 	}
 	const body = lines.filter((line, index) => line.length > 0 || index === lines.length - 1);

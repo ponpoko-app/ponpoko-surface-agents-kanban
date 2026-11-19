@@ -136,6 +136,7 @@ describe("the agent sees the image", () => {
 		deliverable: "กดบันทึกแล้วไม่ค้าง",
 		spec: "",
 		acceptance: "",
+		checks: [],
 		tags: [],
 		lane: "working",
 		position: 0,

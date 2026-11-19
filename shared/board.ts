@@ -15,8 +15,8 @@ export const LANE_HINTS: Record<Lane, string> = {
 	backlog: "การ์ดที่ยังไม่มีใครทำ ลากไป Working เพื่อเริ่ม",
 	working: "agent กำลังทำงานอยู่บน session ของการ์ดนี้",
 	blocked: "รอคำตอบจากคุณ — ตอบในหน้าการ์ดแล้ว agent จะทำต่อ",
-	ready_to_test: "งานเสร็จแล้ว รอ agent อีกตัวมาตรวจ",
-	fix: "ตรวจไม่ผ่าน กลับไปแก้ในการ์ดเดิม",
+	ready_to_test: "รอรันคำสั่งตรวจจากการ์ด",
+	fix: "กลับไปแก้ในการ์ดเดิม",
 	done: "ปิดงานแล้ว",
 };
 
@@ -87,6 +87,7 @@ export interface Card {
 	deliverable: string;
 	spec: string;
 	acceptance: string;
+	checks: string[];
 	tags: string[];
 	lane: Lane;
 	position: number;
@@ -238,6 +239,7 @@ export const emptyCard = (id: string, at: number): Card => ({
 	deliverable: "",
 	spec: "",
 	acceptance: "",
+	checks: [],
 	tags: [],
 	lane: "backlog",
 	position: at,

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LANE_LABELS, moveTargets, type Agent, type Card, type Lane } from "../../shared/board";
 import { Attachments } from "./Attachments";
 import { CardAnswer } from "./CardAnswer";
-import type { BoardClient } from "./client";
+import type { BoardClient, CardPatch } from "./client";
 import type { ConsultationService } from "./consult";
 import { filesFromClipboard } from "./media";
 
@@ -13,7 +13,7 @@ interface Props {
 	onAttachFiles: (cardId: string, files: File[]) => void;
 	onDetachFile: (cardId: string, attachmentId: string) => void;
 	onClose: () => void;
-	onSave: (id: string, patch: { title?: string; deliverable?: string; spec?: string; acceptance?: string; tags?: string[] }) => void;
+	onSave: (id: string, patch: CardPatch) => Promise<Card | null>;
 	onMove: (id: string, lane: Lane) => void;
 	onAnswer: (id: string, text: string, askedAt?: number) => Promise<Card | null>;
 	consult?: ConsultationService;
@@ -25,6 +25,7 @@ interface Props {
 const nameOf = (agents: Agent[], id: string | null): string => (id ? (agents.find((a) => a.id === id)?.name ?? id) : "—");
 
 const when = (at: number): string => new Date(at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+const checkLines = (text: string): string[] => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
 export function CardDrawer({
 	client,
@@ -45,7 +46,10 @@ export function CardDrawer({
 	const [deliverable, setDeliverable] = useState(card.deliverable);
 	const [spec, setSpec] = useState(card.spec);
 	const [acceptance, setAcceptance] = useState(card.acceptance);
-	const [tags, setTags] = useState(card.tags.join(", "));
+	const storedChecks = card.checks.join("\n");
+	const storedTags = card.tags.join(", ");
+	const [checks, setChecks] = useState(storedChecks);
+	const [tags, setTags] = useState(storedTags);
 	const [confirming, setConfirming] = useState(false);
 	const [saved, setSaved] = useState(true);
 
@@ -54,10 +58,11 @@ export function CardDrawer({
 		setDeliverable(card.deliverable);
 		setSpec(card.spec);
 		setAcceptance(card.acceptance);
-		setTags(card.tags.join(", "));
+		setChecks(storedChecks);
+		setTags(storedTags);
 		setConfirming(false);
 		setSaved(true);
-	}, [card.id, card.title, card.deliverable, card.spec, card.acceptance, card.tags]);
+	}, [card.id, card.title, card.deliverable, card.spec, card.acceptance, storedChecks, storedTags]);
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent): void => {
@@ -75,12 +80,13 @@ export function CardDrawer({
 				deliverable,
 				spec,
 				acceptance,
+				checks: checkLines(checks),
 				tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
 			});
 			setSaved(true);
 		}, 500);
 		return () => clearTimeout(timer);
-	}, [saved, title, deliverable, spec, acceptance, tags, card.id, onSave]);
+	}, [saved, title, deliverable, spec, acceptance, checks, tags, card.id, onSave]);
 
 	const touch = (): void => setSaved(false);
 
@@ -143,6 +149,10 @@ export function CardDrawer({
 				/>
 			</label>
 			<label>
+				คำสั่งตรวจ (บรรทัดละคำสั่ง)
+				<textarea value={checks} rows={2} onChange={(event) => { setChecks(event.target.value); touch(); }} />
+			</label>
+			<label>
 				ถนัดที่ต้องการ (คั่นด้วย ,)
 				<input
 					value={tags}
@@ -173,8 +183,11 @@ export function CardDrawer({
 					</button>
 				)}
 				{card.lane === "ready_to_test" && (
-					<button type="button" className="ghost" onClick={() => onMove(card.id, "done")}>
-						ปิดงาน
+					<button type="button" className="primary" onClick={async () => {
+						if (checks !== storedChecks && !await onSave(card.id, { checks: checkLines(checks) })) return;
+						onMove(card.id, "done");
+					}}>
+						ตรวจและปิดงาน
 					</button>
 				)}
 			</div>

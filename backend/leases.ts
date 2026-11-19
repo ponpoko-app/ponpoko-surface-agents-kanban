@@ -8,7 +8,7 @@ export interface Lease {
 	cardId: string;
 	agentId: string;
 	token: string;
-	role: CardRole;
+	role: CardRole | "check";
 	pid: number | null;
 }
 
@@ -29,7 +29,7 @@ export class Leases {
 		return this.store.db.query("SELECT * FROM leases WHERE cardId = ?").get(cardId) as Lease | null;
 	}
 
-	acquire(cardId: string, agentId: string, role: CardRole): Lease | null {
+	acquire(cardId: string, agentId: string, role: Lease["role"]): Lease | null {
 		const lease = { cardId, agentId, role, token: randomUUID(), pid: null };
 		return this.store.transaction(() => {
 			const { changes } = this.store.db.query("INSERT OR IGNORE INTO leases (cardId, agentId, token, role) VALUES (?, ?, ?, ?)").run(cardId, agentId, lease.token, role);

@@ -43,8 +43,12 @@ export class BoardApp {
 					requireId(params),
 					params.patch && typeof params.patch === "object" ? (params.patch as Record<string, never>) : {},
 				);
-			case "card.move":
-				return this.board.moveCard(requireId(params), lane(params), typeof params.position === "number" ? params.position : undefined);
+			case "card.move": {
+				const id = requireId(params);
+				const target = lane(params);
+				if (target === "done" && this.board.card(id).lane === "ready_to_test") return this.board.submit(id);
+				return this.board.moveCard(id, target, typeof params.position === "number" ? params.position : undefined);
+			}
 			case "card.delete":
 				return this.board.deleteCard(requireId(params));
 			case "card.start":

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Attachments } from "../backend/attachments";
 import { BoardService, type Runner } from "../backend/board";
+import type { CheckResult } from "../backend/checks";
 import { BoardStore } from "../backend/store";
 import type { Card, CardRole } from "../shared/board";
 
@@ -24,6 +25,9 @@ class FakeRunner implements Runner {
 	readonly stopped: string[] = [];
 
 	private readonly liveCards = new Set<string>();
+	check = async (card: Card): Promise<CheckResult[]> => card.checks.map((command) => ({
+		command, exit: command === "ตรวจไม่ผ่าน" ? 7 : 0, timedOut: false, output: "ผลจากตัวตรวจ",
+	}));
 
 	start(card: Card, role: CardRole): boolean {
 		this.started.push({ id: card.id, role });
@@ -85,36 +89,38 @@ describe("the card lifecycle", () => {
 		expect(answered.answer).toBe("ใช้ token ใน .env ได้");
 	});
 
-	test("ready to test hands the card to an agent that did not build it", () => {
+	test("การ์ดพร้อมตรวจโดยไม่ต้องจอง agent อีกตัว", () => {
 		const { board, runner } = open();
 		const first = board.addAgent({ name: "codex-1", kind: "codex" });
-		const second = board.addAgent({ name: "pi-1", kind: "pi" });
+		board.addAgent({ name: "pi-1", kind: "pi" });
 		const card = board.createCard({ title: "งาน" });
 		board.moveCard(card.id, "working");
 		const ready = board.moveCard(card.id, "ready_to_test");
 		expect(ready.assignee).toBe(first.id);
-		expect(ready.reviewer).toBe(second.id);
-		expect(ready.reviewer).not.toBe(ready.assignee);
-		expect(runner.started.some((call) => call.role === "reviewer")).toBe(true);
+		expect(ready.reviewer).toBeNull();
+		expect(runner.started.map((call) => call.role)).toEqual(["implementer"]);
 	});
 
-	test("a pass closes the card and a fail sends it back to the same implementer", () => {
+	test("บอร์ดใช้ผลคำสั่งตรวจเป็นหลักและเก็บหลักฐานไว้บนการ์ด", async () => {
 		const { board } = open();
 		board.addAgent({ name: "codex-1", kind: "codex" });
 		board.addAgent({ name: "pi-1", kind: "pi" });
 		const passed = board.createCard({ title: "ผ่าน" });
 		board.moveCard(passed.id, "working");
 		board.moveCard(passed.id, "ready_to_test");
-		const done = board.reviewVerdict(passed.id, "PASS\nทุกอย่างเรียบร้อย");
+		expect(board.reviewVerdict(passed.id, "PASS\nทุกอย่างเรียบร้อย").lane).toBe("ready_to_test");
+		await expect(board.submit(passed.id)).rejects.toThrow(/เพิ่มคำสั่งตรวจ/);
+		const done = await board.submit(passed.id, ["ตรวจผ่าน"]);
 		expect(done.lane).toBe("done");
+		expect(done.checks).toEqual(["ตรวจผ่าน"]);
 
 		const failed = board.createCard({ title: "ไม่ผ่าน" });
 		const builder = board.moveCard(failed.id, "working").assignee;
 		board.moveCard(failed.id, "ready_to_test");
-		const fix = board.reviewVerdict(failed.id, "FAIL\nbuild แดง");
-		expect(fix.lane).toBe("fix");
-		expect(fix.assignee).toBe(builder);
-		expect(fix.assignee).not.toBeNull();
+		const result = await board.submit(failed.id, ["ตรวจไม่ผ่าน"]);
+		expect(result.lane).toBe("ready_to_test");
+		expect(result.assignee).toBe(builder);
+		expect(result.notes.some(({ text }) => text === "ตรวจไม่ผ่าน · exit 7\nผลจากตัวตรวจ")).toBe(true);
 	});
 
 	test("a fix round keeps the implementer and their session so the resume is not a restart", () => {
@@ -124,7 +130,7 @@ describe("the card lifecycle", () => {
 		board.moveCard(card.id, "working");
 		board.setSession(card.id, "implementer", "thread-42");
 		board.moveCard(card.id, "ready_to_test");
-		board.reviewVerdict(card.id, "FAIL\nอีกนิด");
+		board.moveCard(card.id, "fix");
 		const resumed = board.moveCard(card.id, "working");
 		expect(resumed.assignee).toBe(worker.id);
 		expect(resumed.sessions.implementer).toBe("thread-42");

@@ -1,6 +1,7 @@
 import type { Card, CardRole } from "../shared/board";
 import { buildLaunch, buildMessage, readEvent, readSessionId, type Phase } from "./agents";
 import type { BoardService, Runner } from "./board";
+import { CheckRunner, type CheckResult } from "./checks";
 import type { BoardStore } from "./store";
 import { DEFAULT_LEASE_TTL_MS, Leases, type Lease } from "./leases";
 import { Worktrees } from "./worktree";
@@ -60,6 +61,8 @@ export class Supervisor implements Runner {
 	private readonly runs = new Map<string, Run>();
 	private readonly leases: Leases;
 	private readonly worktrees: Worktrees;
+	private readonly checks = new CheckRunner();
+	private closing = false;
 
 	constructor(deps: SupervisorDeps) {
 		this.deps = deps;
@@ -87,7 +90,27 @@ export class Supervisor implements Runner {
 		this.worktrees.remove(cardId);
 	}
 
+	async check(card: Card): Promise<CheckResult[]> {
+		const repository = this.deps.repoPath();
+		this.stop(card.id);
+		const deadline = Date.now() + this.cutoff + 1000;
+		while (this.runs.has(card.id) && Date.now() < deadline) await Bun.sleep(25);
+		if (this.closing) throw new Error("กำลังปิดบอร์ด");
+		const lease = this.leases.acquire(card.id, `check:${card.id}`, "check");
+		if (!lease) throw new Error("ยังตรวจไม่ได้ เพราะมี process อื่นถือสิทธิ์ของการ์ดนี้");
+		try {
+			const cwd = this.worktrees.ensure(card.id, repository);
+			return await this.checks.run(cwd, card.checks, (pid) => {
+				this.leases.started(lease, pid);
+				this.leases.touch(lease);
+			});
+		} finally {
+			this.leases.release(lease);
+		}
+	}
+
 	start(card: Card, role: CardRole): boolean {
+		if (this.closing) return false;
 		const current = this.runs.get(card.id);
 		if (current) {
 			if (current.stopping) current.restartRole = role;
@@ -237,7 +260,7 @@ export class Supervisor implements Runner {
 		const moved = this.deps.store.card(run.cardId) ?? card;
 		if (code === 0) {
 			board.note(run.cardId, "event", "session จบแล้ว");
-			if (moved.lane === "working" || moved.lane === "fix") board.moveCard(run.cardId, "ready_to_test");
+			if (!board.isChecking(run.cardId) && (moved.lane === "working" || moved.lane === "fix")) board.moveCard(run.cardId, "ready_to_test");
 		} else {
 			board.note(run.cardId, "system", `จบด้วย exit ${code}${tail ? ` — ${tail}` : ""}`);
 		}
@@ -271,6 +294,12 @@ export class Supervisor implements Runner {
 
 	stopAll(): void {
 		for (const cardId of this.runs.keys()) this.stop(cardId);
+		this.checks.stop();
+	}
+
+	close(): void {
+		this.closing = true;
+		this.stopAll();
 	}
 
 	sweep(recoverLegacy = true, now = Date.now()): Card[] {
@@ -281,6 +310,10 @@ export class Supervisor implements Runner {
 			if (this.runs.has(lease.cardId) || !this.leases.release(lease)) continue;
 			board.release(lease.agentId, lease.cardId);
 			const card = this.deps.store.card(lease.cardId);
+			if (card && lease.role === "check") {
+				swept.push(board.note(card.id, "system", "ยืนยันผลตรวจครั้งก่อนไม่ได้ โปรดสั่งตรวจใหม่"));
+				continue;
+			}
 			if (!card || !["working", "fix", "ready_to_test"].includes(card.lane)) continue;
 			if (card.lane === "ready_to_test") board.moveCard(card.id, "fix");
 			board.moveCard(card.id, "backlog");

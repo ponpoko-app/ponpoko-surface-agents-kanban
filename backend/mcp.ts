@@ -1,4 +1,4 @@
-import type { AgentKind, Lane, McpInfo } from "../shared/board";
+import type { AgentKind, McpInfo } from "../shared/board";
 import type { BoardService } from "./board";
 
 export interface McpDeps {
@@ -80,12 +80,16 @@ const TOOLS = [
 	},
 	{
 		name: "board_submit",
-		description: "ส่งงานไปคอลัมน์ Ready to test ให้ agent อีกตัวตรวจ",
-		inputSchema: { type: "object", properties: { card_id: { type: "string" }, summary: { type: "string" } }, required: ["card_id"] },
+		description: "รันคำสั่งตรวจใน worktree และปิดการ์ดเมื่อผ่านทุกคำสั่ง ส่ง checks เพื่อกำหนดคำสั่งใหม่ได้",
+		inputSchema: {
+			type: "object",
+			properties: { card_id: { type: "string" }, summary: { type: "string" }, checks: { type: "array", items: { type: "string" }, minItems: 1 } },
+			required: ["card_id"],
+		},
 	},
 	{
 		name: "board_review",
-		description: "บันทึกผลตรวจ: verdict เป็น pass หรือ fail",
+		description: "บันทึกความเห็นเสริมว่า pass หรือ fail โดยให้คำสั่งตรวจบนการ์ดตัดสินการปิดงาน",
 		inputSchema: {
 			type: "object",
 			properties: { card_id: { type: "string" }, verdict: { type: "string", enum: ["pass", "fail"] }, reason: { type: "string" } },
@@ -113,6 +117,7 @@ const cardView = (card: ReturnType<BoardService["card"]>) => ({
 	lane: card.lane,
 	deliverable: card.deliverable,
 	acceptance: card.acceptance,
+	checks: card.checks,
 	tags: card.tags,
 	assignee: card.assignee,
 	reviewer: card.reviewer,
@@ -126,7 +131,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 	const token = options.token ?? randomToken(24);
 	const session = randomToken(8);
 
-	const runTool = (name: string, args: Args): unknown => {
+	const runTool = async (name: string, args: Args): Promise<unknown> => {
 		const board = deps.board();
 		if (LEASE_TOOLS.has(name)) deps.useLease?.(text(args, "card_id"), text(args, "lease_token"));
 		switch (name) {
@@ -157,11 +162,8 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 				return cardView(board.ask(text(args, "card_id"), { text: args.text, options: args.options, recommend: args.recommend, kind: args.kind }));
 			case "board_block":
 				return cardView(board.block(text(args, "card_id"), text(args, "question")));
-			case "board_submit": {
-				const id = text(args, "card_id");
-				board.note(id, "note", text(args, "summary") || "ส่งงานให้ตรวจ");
-				return cardView(board.moveCard(id, "ready_to_test" as Lane));
-			}
+			case "board_submit":
+				return cardView(await board.submit(text(args, "card_id"), args.checks, text(args, "summary")));
 			case "board_review": {
 				const verdict = text(args, "verdict").toLowerCase() === "fail" ? "FAIL" : "PASS";
 				const reason = text(args, "reason");
@@ -178,7 +180,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 	const failure = (id: RpcRequest["id"], code: number, message: string, status = 200): Response =>
 		Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status, headers: { "Content-Type": "application/json" } });
 
-	const handle = (request: RpcRequest): Response | null => {
+	const handle = async (request: RpcRequest): Promise<Response | null> => {
 		const method = request.method ?? "";
 		if (method === "initialize") {
 			return answer(
@@ -187,21 +189,21 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 					protocolVersion: PROTOCOL_VERSION,
 					capabilities: { tools: {} },
 					serverInfo: { name: "agents-kanban", version: "0.1.0" },
-					instructions: "ดึงการ์ดด้วย board_claim, ส่งงานด้วย board_submit, ตอบผลตรวจด้วย board_review",
+					instructions: "ดึงการ์ดด้วย board_claim แล้วส่งงานพร้อมคำสั่งตรวจด้วย board_submit",
 				},
 				{ "Mcp-Session-Id": session },
 			);
 		}
 		if (method.startsWith("notifications/")) return null;
 		if (method === "ping") return answer(request.id, {});
-	if (method === "tools/list") return answer(request.id, { tools: TOOLS.map((tool) => LEASE_TOOLS.has(tool.name)
-		? { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, lease_token: LEASE_TOKEN } } }
-		: tool) });
+		if (method === "tools/list") return answer(request.id, { tools: TOOLS.map((tool) => LEASE_TOOLS.has(tool.name)
+			? { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, lease_token: LEASE_TOKEN } } }
+			: tool) });
 		if (method === "tools/call") {
 			const name = typeof request.params?.name === "string" ? request.params.name : "";
 			const args = (request.params?.arguments as Args) ?? {};
 			try {
-				const value = runTool(name, args);
+				const value = await runTool(name, args);
 				return answer(request.id, { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
 			} catch (error) {
 				return answer(request.id, { content: [{ type: "text", text: String(error) }], isError: true });
@@ -224,18 +226,18 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 				return failure(null, -32700, "อ่าน JSON ไม่ได้");
 			}
 			if (Array.isArray(body)) {
-				const answered = body.map((item) => handle(item)).filter((item): item is Response => item !== null);
+				const answered = (await Promise.all(body.map(handle))).filter((item): item is Response => item !== null);
 				if (answered.length === 0) return new Response(null, { status: 202 });
 				const payload = await Promise.all(answered.map((response) => response.json()));
 				return Response.json(payload, { headers: { "Content-Type": "application/json" } });
 			}
-		const response = handle(body);
+		const response = await handle(body);
 		if (!response) return new Response(null, { status: 202 });
 		return response;
 	};
 
 	const bind = (port: number): ReturnType<typeof Bun.serve> =>
-		Bun.serve({ hostname: "127.0.0.1", port, fetch: fetchHandler });
+		Bun.serve({ hostname: "127.0.0.1", port, idleTimeout: 255, fetch: fetchHandler });
 
 	let server: ReturnType<typeof Bun.serve>;
 	try {

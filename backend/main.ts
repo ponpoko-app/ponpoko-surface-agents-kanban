@@ -38,7 +38,7 @@ sweepTimer.unref?.();
 const app = new BoardApp(board);
 const shutdown = (): void => {
 	clearInterval(sweepTimer);
-	supervisor.stopAll();
+	supervisor.close();
 	mcp?.stop();
 };
 
@@ -53,8 +53,7 @@ process.on("SIGTERM", () => void close());
 process.on("SIGINT", () => void close());
 process.on("exit", shutdown);
 
-const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-for await (const line of input) {
+async function answer(line: string): Promise<void> {
 	let request: { jsonrpc?: string; id?: unknown; method?: string; params?: Record<string, unknown> } | undefined = undefined;
 	try {
 		if (Buffer.byteLength(line) > 4 * 1024 * 1024) throw new Error("Request exceeds 4 MiB");
@@ -71,5 +70,14 @@ for await (const line of input) {
 	}
 }
 
+const responses = new Set<Promise<void>>();
+const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+for await (const line of input) {
+	const response = answer(line);
+	responses.add(response);
+	void response.finally(() => responses.delete(response));
+}
+
 shutdown();
+await Promise.allSettled(responses);
 store.close();

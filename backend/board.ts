@@ -6,7 +6,6 @@ import {
 	laneCards,
 	LANES,
 	pickAssignee,
-	pickReviewer,
 	readVerdict,
 	type Agent,
 	type AgentKind,
@@ -20,6 +19,7 @@ import {
 	type Settings,
 } from "../shared/board";
 import type { Attachments, IncomingAttachment } from "./attachments";
+import { normalizeChecks, type CheckResult } from "./checks";
 import type { BoardStore } from "./store";
 
 export interface Runner {
@@ -27,6 +27,7 @@ export interface Runner {
 	stop(cardId: string): void;
 	live(): Set<string>;
 	removeWorktree?(cardId: string): void;
+	check?(card: Card): Promise<CheckResult[]>;
 }
 
 export interface BoardDeps {
@@ -41,6 +42,7 @@ export interface CardInput {
 	deliverable?: string;
 	spec?: string;
 	acceptance?: string;
+	checks?: string[];
 	tags?: string[];
 	lane?: Lane;
 }
@@ -50,6 +52,7 @@ export interface CardPatch {
 	deliverable?: string;
 	spec?: string;
 	acceptance?: string;
+	checks?: string[];
 	tags?: string[];
 }
 
@@ -66,15 +69,7 @@ const trimmed = (value: unknown): string => (typeof value === "string" ? value.t
 
 const tagList = (value: unknown): string[] => {
 	const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-	const seen = new Set<string>();
-	const out: string[] = [];
-	for (const item of raw) {
-		const tag = trimmed(item).toLowerCase();
-		if (!tag || seen.has(tag)) continue;
-		seen.add(tag);
-		out.push(tag);
-	}
-	return out;
+	return [...new Set(raw.map((item) => trimmed(item).toLowerCase()).filter(Boolean))];
 };
 
 export const newCardId = (at: number): string =>
@@ -87,6 +82,7 @@ export const newAgentId = (name: string, at: number): string => {
 
 export class BoardService {
 	private readonly deps: BoardDeps;
+	private readonly checking = new Set<string>();
 
 	constructor(deps: BoardDeps) {
 		this.deps = deps;
@@ -123,6 +119,7 @@ export class BoardService {
 		const title = trimmed(input.title);
 		if (!title) throw new Error("การ์ดต้องมีชื่อ");
 		const lane: Lane = input.lane && LANES.includes(input.lane) ? input.lane : "backlog";
+		if (lane === "done") throw new Error("ต้องตรวจงานก่อนปิดการ์ด");
 		const siblings = laneCards(this.deps.store.cards(), lane);
 		const card: Card = {
 			...emptyCard(id, at),
@@ -130,6 +127,7 @@ export class BoardService {
 			deliverable: trimmed(input.deliverable),
 			spec: trimmed(input.spec),
 			acceptance: trimmed(input.acceptance),
+			checks: input.checks === undefined ? [] : normalizeChecks(input.checks),
 			tags: tagList(input.tags),
 			lane,
 			position: siblings.length === 0 ? 0 : siblings[siblings.length - 1].position + 1,
@@ -140,6 +138,7 @@ export class BoardService {
 	}
 
 	updateCard(id: string, patch: CardPatch): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		const next: Card = {
 			...card,
@@ -147,6 +146,7 @@ export class BoardService {
 			deliverable: patch.deliverable === undefined ? card.deliverable : trimmed(patch.deliverable),
 			spec: patch.spec === undefined ? card.spec : trimmed(patch.spec),
 			acceptance: patch.acceptance === undefined ? card.acceptance : trimmed(patch.acceptance),
+			checks: patch.checks === undefined ? card.checks : normalizeChecks(patch.checks),
 			tags: patch.tags === undefined ? card.tags : tagList(patch.tags),
 			updatedAt: stamp(),
 		};
@@ -184,9 +184,11 @@ export class BoardService {
 	}
 
 	moveCard(id: string, lane: Lane, position?: number): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		if (!LANES.includes(lane)) throw new Error(`ไม่รู้จักคอลัมน์ ${lane}`);
 		if (!canMove(card.lane, lane)) throw new Error(`ย้ายจาก ${card.lane} ไป ${lane} ไม่ได้`);
+		if (lane === "done" && card.lane !== "done") throw new Error("ต้องตรวจงานก่อนปิดการ์ด");
 		const at = stamp();
 		if (card.lane === lane) {
 			const next: Card = { ...card, position: position ?? card.position, updatedAt: at };
@@ -228,24 +230,10 @@ export class BoardService {
 				});
 				return next;
 			}
-			case "blocked": {
-				return this.blocked(card, null, at);
-			}
+			case "blocked": return this.blocked(card, null, at);
 			case "ready_to_test": {
 				this.deps.runner.stop(card.id);
-				const pick = card.reviewer ? null : pickReviewer(card, agents);
-				const reviewer = card.reviewer ?? pick?.agentId ?? null;
-				let next: Card = { ...card, lane, reviewer, verdict: null, question: null, updatedAt: at };
-				next = addNote(
-					next,
-					{ at, kind: "review", text: reviewer ? `ส่งให้ ${reviewer} ตรวจ` : "งานเสร็จ รอคนตรวจ (ยังไม่มี agent ว่าง)" },
-				);
-				if (reviewer) {
-					this.deps.store.putCard(next);
-					this.deps.runner.start(next, "reviewer");
-					return this.card(card.id);
-				}
-				return next;
+				return addNote({ ...card, lane, question: null, verdict: null }, { at, kind: "review", text: "พร้อมรันคำสั่งตรวจจากการ์ด" });
 			}
 			case "fix": {
 				this.deps.runner.stop(card.id);
@@ -266,15 +254,52 @@ export class BoardService {
 		const verdict = readVerdict(text);
 		const card = this.card(id);
 		const at = stamp();
-		const noted = addNote({ ...card, verdict: verdict ?? card.verdict, updatedAt: at }, {
+		const noted = addNote(card, {
 			at,
 			kind: "review",
-			text: `ผลตรวจ: ${verdict ?? "ไม่ชัดเจน"} — ${text.split("\n")[0]?.slice(0, 300) ?? ""}`,
+			text: `ความเห็นเสริม (${verdict ?? "ไม่ชัดเจน"})\n${text.slice(0, 3500)}`,
 		});
 		this.deps.store.putCard(noted);
-		if (verdict === "pass") return this.moveCard(id, "done");
-		if (verdict === "fail") return this.moveCard(id, "fix");
 		return noted;
+	}
+
+	isChecking(id: string): boolean {
+		return this.checking.has(id);
+	}
+
+	private requireIdle(id: string): void {
+		if (this.isChecking(id)) throw new Error("การ์ดกำลังรันคำสั่งตรวจ");
+	}
+
+	async submit(id: string, checks?: unknown, summary = ""): Promise<Card> {
+		this.requireIdle(id);
+		const card = this.card(id);
+		if (!["working", "fix", "ready_to_test"].includes(card.lane)) throw new Error("การ์ดยังส่งตรวจไม่ได้");
+		const commands = checks === undefined ? card.checks : normalizeChecks(checks);
+		if (!commands.length) throw new Error("เพิ่มคำสั่งตรวจอย่างน้อยหนึ่งคำสั่งก่อนปิดการ์ด");
+		if (!this.deps.runner.check) throw new Error("บอร์ดยังรันคำสั่งตรวจไม่ได้");
+		const pending = this.updateCard(id, { checks: commands });
+		this.deps.store.putCard({ ...pending, verdict: null });
+		this.checking.add(id);
+		try {
+			if (summary.trim()) this.note(id, "note", summary);
+			this.note(id, "review", "เริ่มรันคำสั่งตรวจใน worktree ของการ์ด");
+			const results = await this.deps.runner.check(pending);
+			for (const result of results) {
+				const status = result.timedOut ? "หมดเวลา" : `exit ${result.exit}`;
+				this.note(id, "review", `${result.command} · ${status}${result.output ? `\n${result.output}` : ""}`);
+			}
+			if (results.length !== commands.length || results.some(({ exit, timedOut }) => exit !== 0 || timedOut)) {
+				return this.note(id, "review", "ตรวจไม่ผ่าน การ์ดยังเปิดอยู่");
+			}
+			const closed = this.step({ ...this.card(id), verdict: "pass" }, "done", stamp());
+			this.deps.store.putCard(closed);
+			return closed;
+		} catch (error) {
+			return this.note(id, "review", `รันคำสั่งตรวจไม่สำเร็จ · ${String(error)}`);
+		} finally {
+			this.checking.delete(id);
+		}
 	}
 
 	private blocked(card: Card, question: CardQuestion | null, at: number): Card {
@@ -286,6 +311,7 @@ export class BoardService {
 	}
 
 	private saveQuestion(id: string, question: CardQuestion): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		if (!canMove(card.lane, "blocked")) throw new Error(`ย้ายจาก ${card.lane} ไป blocked ไม่ได้`);
 		const previous = card.notes.reduce(
@@ -319,6 +345,7 @@ export class BoardService {
 	}
 
 	answer(id: string, answer: string, askedAt?: number): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		if (askedAt !== undefined && (card.lane !== "blocked" || card.question?.askedAt !== askedAt)) {
 			throw new Error("คำถามเปลี่ยนแล้ว กรุณาเลือกคำตอบจากคำถามล่าสุด");
@@ -333,6 +360,7 @@ export class BoardService {
 	}
 
 	resume(id: string): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		if (card.lane === "working" || card.lane === "fix") {
 			const started = this.deps.runner.start(card, "implementer");
@@ -382,6 +410,7 @@ export class BoardService {
 	}
 
 	deleteCard(id: string): Card {
+		this.requireIdle(id);
 		const card = this.card(id);
 		this.deps.runner.stop(id);
 		this.deps.runner.removeWorktree?.(id);

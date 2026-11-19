@@ -251,7 +251,7 @@ export function App({ client }: Props) {
 					}}
 					onDetachFile={(id, attachmentId) => void board.detach(id, attachmentId)}
 					onClose={() => showCard(null)}
-					onSave={(id, patch) => void board.update(id, patch)}
+					onSave={board.update}
 					onMove={(id, lane) => void board.move(id, lane)}
 					onAnswer={board.answer}
 					consult={consultReady ? consult : undefined}

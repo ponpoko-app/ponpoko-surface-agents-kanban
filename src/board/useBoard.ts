@@ -118,7 +118,7 @@ export function useBoard(client: BoardClient | null): BoardState {
 	const move = useCallback(
 		async (id: string, lane: Lane, position?: number) => {
 			if (!client) return false;
-			setSnapshot((current) => {
+			if (lane !== "done") setSnapshot((current) => {
 				if (!current) return current;
 				return { ...current, cards: current.cards.map((card) => (card.id === id ? { ...card, lane } : card)) };
 			});
