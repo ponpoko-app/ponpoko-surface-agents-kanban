@@ -85,6 +85,24 @@ beforeAll(() => {
 		].join("\n"),
 	);
 	chmodSync(stub, 0o755);
+	const claude = join(root, "claude");
+	writeFileSync(claude, [
+		"#!/bin/sh",
+		"echo '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"claude-เดิม\"}'",
+		"echo '{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"utilization\":1}}'",
+		"printf '%s' \"$PWD\" > before.txt",
+		"exit 1",
+	].join("\n"));
+	chmodSync(claude, 0o755);
+	const gemini = join(root, "gemini");
+	writeFileSync(gemini, [
+		"#!/bin/sh",
+		"printf '%s' \"$*\" > next-args.txt",
+		"printf '%s' \"$PWD\" > after.txt",
+		"echo '{\"type\":\"init\",\"session_id\":\"gemini-ใหม่\"}'",
+		"sleep 30",
+	].join("\n"));
+	chmodSync(gemini, 0o755);
 	process.env.PATH = `${root}:${originalPath}`;
 	process.env.KANBAN_TEST_PIDS = pids;
 	process.env.KANBAN_TEST_ARGS = argsFile;
@@ -224,6 +242,28 @@ describe("a card's worker process", () => {
 			expect(() => supervisor.useLease(id, lease.token)).toThrow(/หมดอายุ/);
 		} finally {
 			delete process.env.KANBAN_TEST_FAIL_CARD;
+			supervisor.stopAll();
+			await waitFor(() => supervisor.live().size === 0);
+			store.close();
+		}
+	});
+
+	test("ติดโควตาแล้วส่งให้ผู้ให้บริการถัดไปใน worktree เดิมโดยเปิด session ใหม่", async () => {
+		const { board, store, supervisor } = setup(join(root, "quota"));
+		try {
+			const claude = board.addAgent({ name: "1-claude", kind: "claude" });
+			const gemini = board.addAgent({ name: "2-gemini", kind: "gemini" });
+			const card = board.createCard({ title: "ส่งต่อเมื่อเต็มโควตา" });
+			expect(board.moveCard(card.id, "working").assignee).toBe(claude.id);
+			expect(await waitFor(() => store.card(card.id)?.sessions.implementer === "gemini-ใหม่")).toBe(true);
+			const cwd = join(store.root, "worktrees", card.id);
+			expect(board.card(card.id).assignee).toBe(gemini.id);
+			expect(readFileSync(join(cwd, "before.txt"), "utf8")).toBe(readFileSync(join(cwd, "after.txt"), "utf8"));
+			expect(readFileSync(join(cwd, "next-args.txt"), "utf8")).not.toContain("--resume");
+			expect(supervisor.usage().find(({ kind }) => kind === "claude")).toMatchObject({ runs: 1, used_fraction: 1 });
+			expect(supervisor.usage().find(({ kind }) => kind === "claude")!.saturatedUntil).toBeGreaterThan(Date.now());
+			expect(supervisor.usage().find(({ kind }) => kind === "gemini")).toMatchObject({ runs: 1, used_fraction: null });
+		} finally {
 			supervisor.stopAll();
 			await waitFor(() => supervisor.live().size === 0);
 			store.close();

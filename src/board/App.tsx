@@ -278,6 +278,7 @@ export function App({ client }: Props) {
 				<AgentsPanel
 					agents={snapshot.agents}
 					cards={snapshot.cards}
+					usage={snapshot.usage ?? []}
 					scanned={board.scanned}
 					scanning={board.scanning}
 					onClose={() => setAgentsOpen(false)}

@@ -1,10 +1,11 @@
-import type { Card, CardRole } from "../shared/board";
+import type { AgentUsage, Card, CardRole, RunnableKind } from "../shared/board";
 import { buildLaunch, buildMessage, readEvent, readSessionId, type Phase } from "./agents";
 import type { BoardService, Runner } from "./board";
 import { CheckRunner, type CheckResult } from "./checks";
 import type { BoardStore } from "./store";
 import { DEFAULT_LEASE_TTL_MS, Leases, type Lease } from "./leases";
 import { Worktrees } from "./worktree";
+import { UsageLedger } from "./usage";
 
 export interface SupervisorDeps {
 	store: BoardStore;
@@ -18,6 +19,7 @@ interface Run {
 	cardId: string;
 	role: CardRole;
 	agentId: string;
+	kind: RunnableKind;
 	pid: number;
 	proc: ReturnType<typeof Bun.spawn>;
 	lease: Lease;
@@ -25,6 +27,7 @@ interface Run {
 	lastText: string;
 	stderr: string[];
 	stopping: boolean;
+	limited: boolean;
 	restartRole: CardRole | null;
 }
 
@@ -60,6 +63,7 @@ export class Supervisor implements Runner {
 
 	private readonly runs = new Map<string, Run>();
 	private readonly leases: Leases;
+	private readonly usageLedger: UsageLedger;
 	private readonly worktrees: Worktrees;
 	private readonly checks = new CheckRunner();
 	private closing = false;
@@ -67,6 +71,7 @@ export class Supervisor implements Runner {
 	constructor(deps: SupervisorDeps) {
 		this.deps = deps;
 		this.leases = new Leases(deps.store);
+		this.usageLedger = new UsageLedger(deps.store);
 		this.worktrees = new Worktrees(deps.store.root);
 	}
 
@@ -76,6 +81,10 @@ export class Supervisor implements Runner {
 
 	live(): Set<string> {
 		return new Set(this.runs.keys());
+	}
+
+	usage(): AgentUsage[] {
+		return this.usageLedger.snapshot();
 	}
 
 	useLease(cardId: string, token: string): void {
@@ -133,7 +142,11 @@ export class Supervisor implements Runner {
 			return false;
 		}
 		if (agent.kind === "manual") {
-			board.note(card.id, "system", "agent ชนิด manual ไม่ได้ทำงานเอง ลากการ์ดเองหรือเพิ่ม codex/pi");
+			board.note(card.id, "system", "agent ชนิด manual ไม่ได้ทำงานเอง ลากการ์ดเองหรือเพิ่ม agent ที่รันงานได้");
+			return false;
+		}
+		if (board.isSaturated(agent.kind)) {
+			board.note(card.id, "system", `${agent.kind} ติดโควตา รอให้หน้าต่างโควตาเปิดใหม่`);
 			return false;
 		}
 		const repoPath = this.deps.repoPath();
@@ -141,7 +154,8 @@ export class Supervisor implements Runner {
 			board.note(card.id, "system", "ยังไม่ได้ตั้ง repo path ของบอร์ด — ตั้งในแถบด้านบนก่อน");
 			return false;
 		}
-		const sessionId = role === "reviewer" ? card.sessions.reviewer : card.sessions.implementer;
+		const previousKind = card.sessions[`${role}Kind`];
+		const sessionId = previousKind && previousKind !== agent.kind ? null : card.sessions[role];
 		const phase: Phase = role === "reviewer" ? "review" : sessionId ? "resume" : "start";
 		const images = card.attachments.map((attachment) => ({
 			name: attachment.name,
@@ -158,7 +172,7 @@ export class Supervisor implements Runner {
 			lease = this.leases.acquire(card.id, agentId, role);
 			if (!lease) throw new Error("การ์ดหรือ agent ยังมีงานที่ถือสิทธิ์อยู่");
 			const worktree = this.worktrees.ensure(card.id, repoPath);
-			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath: worktree, sessionId, images });
+			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath: worktree, sessionId, images, mcp: board.snapshot().mcp, dataDirectory: this.deps.store.root });
 			proc = Bun.spawn([launch.command, ...launch.args], {
 				cwd: launch.cwd,
 				env: { ...process.env, ...launch.env, AGENTS_KANBAN_LEASE: lease.token },
@@ -172,11 +186,13 @@ export class Supervisor implements Runner {
 			return false;
 		}
 		this.leases.started(lease, proc.pid);
+		this.usageLedger.start(agent.kind);
 		board.claim(agentId, card.id);
 		const run: Run = {
 			cardId: card.id,
 			role,
 			agentId,
+			kind: agent.kind,
 			pid: proc.pid,
 			proc,
 			lease,
@@ -184,6 +200,7 @@ export class Supervisor implements Runner {
 			lastText: "",
 			stderr: [],
 			stopping: false,
+			limited: false,
 			restartRole: null,
 		};
 		this.runs.set(card.id, run);
@@ -206,16 +223,18 @@ export class Supervisor implements Runner {
 	private async pump(run: Run): Promise<void> {
 		const stderr = splitLines(run.proc.stderr as ReadableStream<Uint8Array> | undefined, (line) => {
 			this.leases.touch(run.lease);
+			if (this.usageLedger.observe(run.kind, line, true)) run.limited = true;
 			run.stderr.push(line);
 			if (run.stderr.length > STDERR_KEEP) run.stderr.shift();
 		});
 		const stdout = splitLines(run.proc.stdout as ReadableStream<Uint8Array> | undefined, (line) => {
 			this.leases.touch(run.lease);
-			const sessionId = readSessionId("pi", line) ?? readSessionId("codex", line);
-			if (sessionId && sessionId !== (run.role === "reviewer" ? this.currentSession(run) : this.currentSession(run))) {
-				this.deps.board().setSession(run.cardId, run.role, sessionId);
+			if (this.usageLedger.observe(run.kind, line, false)) run.limited = true;
+			const sessionId = readSessionId(run.kind, line);
+			if (sessionId && sessionId !== this.currentSession(run)) {
+				this.deps.board().setSession(run.cardId, run.role, sessionId, run.kind);
 			}
-			const event = readEvent("codex", line) ?? readEvent("pi", line);
+			const event = readEvent(run.kind, line);
 			if (!event) return;
 			if (event.text) run.lastText = event.text;
 			if (!event.done) this.transfer(run, event.action, event.text);
@@ -238,7 +257,7 @@ export class Supervisor implements Runner {
 		this.runs.delete(run.cardId);
 		const board = this.deps.board();
 		const card = this.deps.store.card(run.cardId);
-		if (run.stopping || !card || code === 0 || run.role === "reviewer") {
+		if (run.stopping || !card || code === 0 || run.role === "reviewer" || run.limited) {
 			this.leases.release(run.lease);
 			board.release(run.agentId, run.cardId);
 		}
@@ -250,6 +269,11 @@ export class Supervisor implements Runner {
 			return;
 		}
 		if (!card) return;
+		if (run.role === "implementer" && run.limited) {
+			board.note(run.cardId, "system", `${run.kind} ติดโควตา บันทึกเวลาเปิดหน้าต่างถัดไปแล้ว`);
+			board.retryAgent(run.cardId);
+			return;
+		}
 		const tail = run.stderr.slice(-3).join(" / ");
 		if (run.role === "reviewer") {
 			const verdictText = (run.lastText || tail).trim();

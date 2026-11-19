@@ -20,19 +20,25 @@ export const LANE_HINTS: Record<Lane, string> = {
 	done: "ปิดงานแล้ว",
 };
 
-export const AGENT_KINDS = ["codex", "pi", "manual"] as const;
+export const RUNNABLE_KINDS = ["codex", "pi", "claude", "gemini"] as const;
+export const AGENT_KINDS = [...RUNNABLE_KINDS, "manual"] as const;
 
 export type AgentKind = (typeof AGENT_KINDS)[number];
+export type RunnableKind = (typeof RUNNABLE_KINDS)[number];
 
 export const AGENT_LABELS: Record<AgentKind, string> = {
 	codex: "Codex (ChatGPT plan)",
 	pi: "pi (Synthetic)",
+	claude: "Claude Code",
+	gemini: "Gemini CLI",
 	manual: "ฉันเอง (ไม่มี session)",
 };
 
 export const AGENT_COMMANDS: Record<AgentKind, string> = {
 	codex: "codex exec --json -s workspace-write -C <repo>",
 	pi: "pi -p --mode json --session-id <card>",
+	claude: "claude --print --verbose --output-format stream-json",
+	gemini: "gemini --output-format stream-json --prompt <task>",
 	manual: "",
 };
 
@@ -55,6 +61,8 @@ export type CardRole = "implementer" | "reviewer";
 export interface CardSessions {
 	implementer: string | null;
 	reviewer: string | null;
+	implementerKind?: AgentKind;
+	reviewerKind?: AgentKind;
 }
 
 export type NoteKind = "note" | "move" | "event" | "review" | "blocked" | "answer" | "system";
@@ -140,7 +148,16 @@ export interface BoardSnapshot {
 	agents: Agent[];
 	settings: Settings;
 	mcp: McpInfo | null;
+	usage: AgentUsage[];
 	at: number;
+}
+
+export interface AgentUsage {
+	kind: RunnableKind;
+	runs: number;
+	used_fraction: number | null;
+	window_ends_at: number | null;
+	saturatedUntil: number | null;
 }
 
 export const MOVES: Record<Lane, readonly Lane[]> = {
@@ -184,20 +201,25 @@ const reasonFor = (tags: readonly string[]): string =>
 		? `ว่าง และไม่มีงานค้าง`
 		: `ว่าง และถนัด ${tags.join(", ")}`;
 
-export const assigneeCandidates = (card: Card, agents: readonly Agent[]): Agent[] =>
-	order(
+export const assigneeCandidates = (card: Card, agents: readonly Agent[], usage: readonly AgentUsage[] = []): Agent[] => {
+	const limits = new Map(usage.map((entry) => [entry.kind, entry]));
+	const at = Date.now();
+	const fraction = (kind: AgentKind): number => kind === "manual" ? 2 : limits.get(kind)?.used_fraction ?? 2;
+	return order(
 		agents.filter(
 			(agent) =>
 				agent.kind !== "manual" &&
 				free(agent) &&
 				agent.id !== card.assignee &&
 				agent.id !== card.reviewer &&
+				(limits.get(agent.kind)?.saturatedUntil ?? 0) <= at &&
 				agentFits(agent, card.tags),
 		),
-	);
+	).sort((first, second) => fraction(first.kind) - fraction(second.kind));
+};
 
-export const pickAssignee = (card: Card, agents: readonly Agent[]): Pick | null => {
-	const chosen = assigneeCandidates(card, agents)[0];
+export const pickAssignee = (card: Card, agents: readonly Agent[], usage?: readonly AgentUsage[]): Pick | null => {
+	const chosen = assigneeCandidates(card, agents, usage)[0];
 	return chosen ? { agentId: chosen.id, reason: reasonFor(card.tags) } : null;
 };
 

@@ -129,7 +129,7 @@ try {
   const scan = await rpc("agent.scan");
   check(
     "agent.scan lists the coding agents this machine could connect",
-    Array.isArray(scan.agents) && ["codex", "pi", "claude", "opencode", "qwen"].every((kind) => scan.agents.some((agent) => agent.kind === kind)),
+    Array.isArray(scan.agents) && ["codex", "pi", "claude", "gemini", "opencode", "qwen"].every((kind) => scan.agents.some((agent) => agent.kind === kind)),
     (scan.agents ?? []).map((agent) => `${agent.kind}:${agent.installed ? "found" : "missing"}`).join(","),
   );
 
@@ -138,6 +138,8 @@ try {
     "board.snapshot carries cards, agents and the mcp endpoint",
     Array.isArray(snapshot.cards) && snapshot.agents.length >= 2 && typeof snapshot.mcp?.url === "string",
   );
+  check("แสดงโควตาของทั้งสี่ชนิดและแสดงค่าที่ยังไม่มีเป็น null",
+    snapshot.usage.length === 4 && snapshot.usage.every((row) => row.used_fraction === null));
 
   const mcp = await rpc("mcp.info");
   check("mcp.info exposes a loopback url and a bearer token", /^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(mcp.url) && mcp.token.length >= 32);

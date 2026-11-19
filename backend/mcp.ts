@@ -1,4 +1,4 @@
-import type { AgentKind, McpInfo } from "../shared/board";
+import { RUNNABLE_KINDS, type AgentKind, type McpInfo, type RunnableKind } from "../shared/board";
 import type { BoardService } from "./board";
 
 export interface McpDeps {
@@ -30,7 +30,7 @@ const TOOLS = [
 		description: "ลงทะเบียน agent นี้กับบอร์ด แล้วได้ agent id กลับไป",
 		inputSchema: {
 			type: "object",
-			properties: { name: { type: "string" }, kind: { type: "string", enum: ["codex", "pi"] }, capabilities: { type: "array", items: { type: "string" } } },
+			properties: { name: { type: "string" }, kind: { type: "string", enum: RUNNABLE_KINDS }, capabilities: { type: "array", items: { type: "string" } } },
 			required: ["name"],
 		},
 	},
@@ -42,7 +42,7 @@ const TOOLS = [
 	{
 		name: "board_claim",
 		description: "ดึงการ์ดแรกใน Backlog ที่ตรงกับความถนัดของ agent นี้มาทำ",
-		inputSchema: { type: "object", properties: { agent: { type: "string" }, kind: { type: "string", enum: ["codex", "pi"] } }, required: ["agent"] },
+		inputSchema: { type: "object", properties: { agent: { type: "string" }, kind: { type: "string", enum: RUNNABLE_KINDS } }, required: ["agent"] },
 	},
 	{
 		name: "board_attach",
@@ -109,7 +109,7 @@ const text = (args: Args, key: string): string => (typeof args[key] === "string"
 const strings = (args: Args, key: string): string[] =>
 	Array.isArray(args[key]) ? (args[key] as unknown[]).filter((value): value is string => typeof value === "string") : [];
 
-const agentKind = (value: unknown): AgentKind => (value === "pi" ? "pi" : value === "codex" ? "codex" : "manual");
+const agentKind = (value: unknown): AgentKind => RUNNABLE_KINDS.includes(value as RunnableKind) ? value as RunnableKind : "manual";
 
 const cardView = (card: ReturnType<BoardService["card"]>) => ({
 	id: card.id,
@@ -131,9 +131,9 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 	const token = options.token ?? randomToken(24);
 	const session = randomToken(8);
 
-	const runTool = async (name: string, args: Args): Promise<unknown> => {
+	const runTool = async (name: string, args: Args, connectionLease: string): Promise<unknown> => {
 		const board = deps.board();
-		if (LEASE_TOOLS.has(name)) deps.useLease?.(text(args, "card_id"), text(args, "lease_token"));
+		if (LEASE_TOOLS.has(name)) deps.useLease?.(text(args, "card_id"), connectionLease || text(args, "lease_token"));
 		switch (name) {
 			case "agents_join":
 				return board.addAgent({
@@ -180,7 +180,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 	const failure = (id: RpcRequest["id"], code: number, message: string, status = 200): Response =>
 		Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, { status, headers: { "Content-Type": "application/json" } });
 
-	const handle = async (request: RpcRequest): Promise<Response | null> => {
+	const handle = async (request: RpcRequest, connectionLease: string): Promise<Response | null> => {
 		const method = request.method ?? "";
 		if (method === "initialize") {
 			return answer(
@@ -203,7 +203,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 			const name = typeof request.params?.name === "string" ? request.params.name : "";
 			const args = (request.params?.arguments as Args) ?? {};
 			try {
-				const value = await runTool(name, args);
+				const value = await runTool(name, args, connectionLease);
 				return answer(request.id, { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
 			} catch (error) {
 				return answer(request.id, { content: [{ type: "text", text: String(error) }], isError: true });
@@ -219,6 +219,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 			if (request.method !== "POST") return new Response("use POST", { status: 405 });
 			const authorization = request.headers.get("authorization") ?? "";
 			if (authorization !== `Bearer ${token}`) return failure(null, -32001, "ต้องส่ง bearer token ของบอร์ดนี้", 401);
+			const connectionLease = request.headers.get("x-agents-kanban-lease") ?? "";
 			let body: RpcRequest | RpcRequest[];
 			try {
 				body = (await request.json()) as RpcRequest | RpcRequest[];
@@ -226,12 +227,12 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 				return failure(null, -32700, "อ่าน JSON ไม่ได้");
 			}
 			if (Array.isArray(body)) {
-				const answered = (await Promise.all(body.map(handle))).filter((item): item is Response => item !== null);
+				const answered = (await Promise.all(body.map((item) => handle(item, connectionLease)))).filter((item): item is Response => item !== null);
 				if (answered.length === 0) return new Response(null, { status: 202 });
 				const payload = await Promise.all(answered.map((response) => response.json()));
 				return Response.json(payload, { headers: { "Content-Type": "application/json" } });
 			}
-		const response = await handle(body);
+		const response = await handle(body, connectionLease);
 		if (!response) return new Response(null, { status: 202 });
 		return response;
 	};

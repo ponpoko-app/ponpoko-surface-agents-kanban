@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A drag-and-drop kanban board where coding agents pull cards, hand them to another agent for testing, and the board keeps the session of every card alive.",
+  "description": "บอร์ดงานสำหรับ agent พร้อมคิวคำถาม Git worktree ต่อการ์ด และคำสั่งตรวจก่อนปิดงาน",
   "scripts": {
     "dev": "vite",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit && bunx tsc -p tsconfig.backend.json --noEmit",

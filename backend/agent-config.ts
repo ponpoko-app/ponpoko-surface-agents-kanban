@@ -36,6 +36,13 @@ export const TARGETS: AgentTarget[] = [
 		format: "unsupported",
 	},
 	{
+		kind: "gemini",
+		label: "Gemini CLI",
+		command: "gemini",
+		configPath: (home) => join(home, ".gemini", "settings.json"),
+		format: "unsupported",
+	},
+	{
 		kind: "opencode",
 		label: "opencode",
 		command: "opencode",
@@ -142,6 +149,8 @@ export const scanAgents = (deps: ConfigDeps): DetectedAgent[] => {
 		const connected = installed && supported ? isConnected(target, path, deps.url) : false;
 		const detail = !installed
 			? `ไม่พบคำสั่ง ${target.command} ในเครื่อง`
+			: target.kind === "claude" || target.kind === "gemini"
+			? "บอร์ดตั้ง MCP ให้เมื่อเริ่มการ์ด"
 			: !supported
 				? `รู้จักแต่ยังเขียน config ให้อัตโนมัติไม่ได้ — ต่อเองได้ที่ ${deps.url}`
 				: connected

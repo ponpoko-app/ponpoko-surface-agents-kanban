@@ -3,7 +3,7 @@
   "name": "Agents Kanban",
   "version": "0.1.0",
   "entry": "index.html",
-  "description": "A kanban board where coding agents pull cards over MCP, a second agent tests the work, and every card keeps its own agent session.",
+  "description": "บอร์ดงานที่ agent ทำงานใน Git worktree ของแต่ละการ์ด และบอร์ดรันคำสั่งตรวจจริงก่อนปิดงาน",
   "requires": { "ai": 1 },
   "contributes": [
     {

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { AGENT_LABELS, AGENT_KINDS, type Agent, type AgentKind, type Card, type ScannedAgent } from "../../shared/board";
+import { AGENT_LABELS, AGENT_KINDS, type Agent, type AgentKind, type AgentUsage, type Card, type ScannedAgent } from "../../shared/board";
 import { ConnectPanel } from "./ConnectPanel";
 
 interface Props {
 	agents: Agent[];
 	cards: Card[];
+	usage: AgentUsage[];
 	scanned: ScannedAgent[];
 	scanning: boolean;
 	onClose: () => void;
@@ -18,6 +19,7 @@ interface Props {
 export function AgentsPanel({
 	agents,
 	cards,
+	usage,
 	scanned,
 	scanning,
 	onClose,
@@ -85,6 +87,24 @@ export function AgentsPanel({
 					);
 				})}
 			</ul>
+			{usage.length > 0 && (
+				<section className="vendor-usage" aria-labelledby="vendor-usage-title">
+					<h3 id="vendor-usage-title">โควตาผู้ให้บริการ</h3>
+					<ul>
+						{usage.map(({ kind, used_fraction, runs, saturatedUntil }) => (
+							<li key={kind}>
+								<strong>{AGENT_LABELS[kind]}</strong>
+								{used_fraction !== null && <progress aria-label={`โควตาที่ใช้ของ ${AGENT_LABELS[kind]}`} value={used_fraction} max={1} />}
+								<span className="hint small">
+									{used_fraction === null ? "ยังไม่มีตัวเลขโควตา" : `ใช้ไป ${Math.round(used_fraction * 100)}%`}
+									{` · รัน ${runs} ครั้ง`}
+									{saturatedUntil && ` · พักถึง ${new Date(saturatedUntil).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`}
+								</span>
+							</li>
+						))}
+					</ul>
+				</section>
+			)}
 			<div className="join">
 				<label>
 					ชื่อ agent ในบอร์ด

@@ -1,4 +1,5 @@
-import type { AgentKind, Card, CardRole } from "../shared/board";
+import type { AgentKind, Card, CardRole, McpInfo } from "../shared/board";
+import { claudeMcp, geminiMcp } from "./agent-mcp";
 
 export type Phase = "start" | "resume" | "review";
 
@@ -21,6 +22,12 @@ interface Line {
 	thread_id?: string;
 	session_id?: string;
 	sessionId?: string;
+	subtype?: string;
+	role?: string;
+	content?: string;
+	name?: string;
+	result?: string;
+	status?: string;
 	item?: {
 		type?: string;
 		command?: string;
@@ -59,7 +66,7 @@ export const buildMessage = (card: Card, role: CardRole, phase: Phase, opts: Mes
 	const extra = opts.extra;
 	const lines = [
 		`การ์ด: ${card.title}`,
-		"เมื่อเรียก MCP เพื่อแก้การ์ด ให้ใส่ค่า AGENTS_KANBAN_LEASE จาก environment ใน lease_token ด้วย",
+		"เมื่อแก้การ์ดผ่าน MCP ให้ใช้สิทธิ์ของการ์ดที่บอร์ดให้ หาก client ยังไม่ส่งให้อัตโนมัติ ให้ส่ง AGENTS_KANBAN_LEASE ใน lease_token",
 		card.deliverable ? `deliverable ที่ต้องปิดให้จบ: ${card.deliverable}` : "deliverable: ทำให้งานนี้ปิดจบได้จริง",
 		card.spec ? `สเปก: ${card.spec}` : "",
 		card.acceptance ? `เกณฑ์ผ่าน: ${card.acceptance}` : "",
@@ -105,6 +112,8 @@ export const buildLaunch = (
 		repoPath: string;
 		sessionId: string | null;
 		images?: MediaRef[];
+		mcp?: McpInfo | null;
+		dataDirectory?: string;
 	},
 ): Launch => {
 	const images = (opts.images ?? []).slice(0, 4);
@@ -128,7 +137,21 @@ export const buildLaunch = (
 		args.push("--mode", "json", "--session-id", opts.sessionId ?? opts.card.id, opts.message);
 		return { command: "pi", args, cwd: opts.repoPath, env };
 	}
-	throw new Error("agent ชนิด manual ไม่มีคำสั่งให้รัน — เพิ่ม codex หรือ pi แทน");
+	if (kind === "claude" || kind === "gemini") {
+		const args = kind === "claude"
+			? ["--print", "--verbose", "--output-format", "stream-json", "--permission-mode", "acceptEdits"]
+			: ["--output-format", "stream-json", "--approval-mode", "auto_edit"];
+		if (opts.sessionId && opts.phase === "resume") args.push("--resume", opts.sessionId);
+		if (opts.mcp) {
+			env.AGENTS_KANBAN_MCP_TOKEN = opts.mcp.token;
+			if (kind === "claude") args.push(...claudeMcp(opts.mcp));
+			if (kind === "gemini" && opts.dataDirectory) env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = geminiMcp(opts.dataDirectory, opts.mcp);
+		}
+		if (kind === "claude") args.push("--", opts.message);
+		else args.push("--prompt", opts.message);
+		return { command: kind, args, cwd: opts.repoPath, env };
+	}
+	throw new Error("agent ชนิด manual ไม่มีคำสั่งให้รัน");
 };
 
 const parse = (line: string): Line | null => {
@@ -150,6 +173,7 @@ export const readSessionId = (kind: AgentKind, line: string): string | null => {
 
 const messageText = (parsed: Line): string => {
 	if (typeof parsed.text === "string") return parsed.text;
+	if (typeof parsed.content === "string") return parsed.content;
 	if (typeof parsed.message === "string") return parsed.message;
 	if (parsed.message && typeof parsed.message === "object") {
 		if (typeof parsed.message.text === "string") return parsed.message.text;
@@ -168,6 +192,18 @@ export const readEvent = (kind: AgentKind, line: string): LaunchedEvent | null =
 	if (!parsed) return null;
 	const sessionId = readSessionId(kind, line);
 	const item = parsed.item;
+	if (kind === "claude" || kind === "gemini") {
+		if (parsed.type === "result") {
+			const text = typeof parsed.result === "string" ? parsed.result : "";
+			return { action: "จบ session", done: true, sessionId, text };
+		}
+		if (parsed.type === "tool_use" && typeof parsed.name === "string") return { action: "ใช้ " + parsed.name, done: false, sessionId, text: "" };
+		if (parsed.type === "error") {
+			const text = typeof parsed.error === "string" ? parsed.error : parsed.error?.message ?? messageText(parsed);
+			return { action: "ข้อผิดพลาดจาก agent", done: false, sessionId, text };
+		}
+		if (parsed.type !== "assistant" && !(parsed.type === "message" && parsed.role === "assistant")) return null;
+	}
 	if (kind === "codex") {
 		if (parsed.type === "turn.completed") return { action: "จบ turn", done: true, sessionId, text: "" };
 		if (parsed.type === "turn.failed") {

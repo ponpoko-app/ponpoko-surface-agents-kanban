@@ -162,6 +162,10 @@
 	margin-bottom: 0;
 }
 
+.vendor-usage ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.vendor-usage li { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; padding: 5px 0; }
+.vendor-usage progress { width: 64px; height: 7px; accent-color: var(--accent); }
+
 .attention-cleared,
 .quiet-attention {
 	animation: quiet-attention-in 180ms ease-out;

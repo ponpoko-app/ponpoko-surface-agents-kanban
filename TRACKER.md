@@ -26,9 +26,9 @@
 | backend ↔ UI | JSON-RPC 2.0 ทาง stdin/stdout, method ทั้งหมดประกาศใน `surface.json` (21 methods) |
 | storage | `bun:sqlite` ที่ `PONPOKO_SURFACE_DATA_DIR/agents-kanban.sqlite3` (WAL) |
 | supervisor | spawn agent ต่อการ์ด, resume session ได้, ตัดที่ `settings.maxConcurrent` (default 2) |
-| agent kind | `codex`, `pi`, `manual` เท่านั้น (`AGENT_COMMANDS`) — claude/opencode/qwen แค่ถูก *สแกน* เจอ ยัง spawn ไม่ได้ |
-| ที่ทำงานของ agent | `settings.repoPath` **ตัวเดียว** ไม่มี worktree |
-| `board_review` | รับ verdict เป็นข้อความ ⇒ **เชื่อคำพูด** |
+| agent kind | `codex`, `pi`, `claude`, `gemini` และ `manual` |
+| ที่ทำงานของ agent | `worktrees/<card-id>` ใต้ data dir โดยมี branch และ lease ต่อใบ |
+| `board_review` | รับความเห็นเสริม ส่วน `board_submit` รันคำสั่งจริงก่อนปิดงาน |
 | Host AI | `BoardClient.call` ส่งคำขอผ่าน Host AI v1 โดยคิวและหน้าการ์ดใช้ผลคำอธิบายเดียวกันต่อคำถาม |
 
 ---
@@ -58,9 +58,9 @@
 | **G2** | board ไม่รัน check เอง ⇒ "เสร็จ" ไม่มีความหมาย | `board_submit` ให้ Supervisor รันคำสั่งจริงใน worktree และเก็บผล | L6 · ปิดแล้ว |
 | **G3** | agent ถามพร้อมตัวเลือกไม่ได้ ⇒ มนุษย์ต้องพิมพ์คำตอบเอง | `board_ask` บันทึก `CardQuestion` และหน้าการ์ดให้กดตัวเลือกได้ | L1 · ปิดแล้ว |
 | **G4** | agent ตายแล้วการ์ดค้าง `working` ไม่มี reclaim | sweep ตรวจ mtime กับสถานะ process และคืนการ์ดไป Backlog | L5 · ปิดแล้ว |
-| **G5** | ไม่มีตัวเลข usage/quota ต่อ vendor | ไม่มี parser usage ที่ไหนเลย | L7 |
+| **G5** | ไม่มีตัวเลข usage/quota ต่อ vendor | `backend/usage.ts` เก็บข้อมูลที่ผู้ให้บริการรายงานและข้ามชนิดที่ติดโควตา | L7 · ปิดแล้ว |
 | **G6** | UI เรียก Host AI ไม่ได้ | `src/board/consult.ts` ใช้ `BoardClient.call` กับ `host.platform / ai.request` | L3 · ปิดแล้ว |
-| G7 | spawn ได้แค่ codex/pi | `AGENT_COMMANDS` มี 2 kind | L7 |
+| G7 | spawn ได้แค่ codex/pi | `AGENT_COMMANDS` รองรับ Claude Code และ Gemini CLI | L7 · ปิดแล้ว |
 
 G1, G2 คือสองข้อที่ทำให้ระบบยังเป็นเดโม — ที่เหลือคือการทำให้ใช้จริงสะดวก
 
@@ -117,7 +117,7 @@ G1, G2 คือสองข้อที่ทำให้ระบบยัง�
 - **ทำ**: `AGENT_COMMANDS` เพิ่ม `claude`/`gemini` (argv ที่รันได้จริงบนเครื่อง), `usage.ts` นับ run + จับ rate-limit error เป็น `saturatedUntil`
 - **acceptance**: spawn claude ได้ 1 ครั้งจริง; `used_fraction` ต่อ kind แสดงบน UI; kind ที่ saturated ถูกข้ามโดยไม่ต้องมี cost table
 - **proof**: `bun test` + `bun run typecheck`
-- **สถานะ**: todo
+- **สถานะ**: done (ดูหลักฐาน L7 ด้านล่าง)
 
 **ลำดับ**: L1 → L2 → L3 → L4 (มนุษย์ได้ผลก่อน) แล้ว L5 → L6 (ความจริงของ "เสร็จ") แล้ว L7
 L5/L6 ทำสลับก่อนได้ถ้าต้องการพิสูจน์ parallelism แต่ L6 ต้องมี L5 ก่อน
@@ -143,4 +143,4 @@ L5/L6 ทำสลับก่อนได้ถ้าต้องการพ�
 | L4 | `bun test test/attention.test.ts` · `bun run build` · Chromium | 5/5 ผ่านและ build ผ่าน; หลังส่งคำตอบข้อสุดท้าย ตัวเลือกหายและข้อความปรากฏ จากนั้นย้ายไปแถบบน ขณะที่ปัญหายังถูกแสดง | 2026-11-19 |
 | L5 | `bun test` · `bun run lint` · `bun run typecheck` | 79 ผ่าน / 10 ไฟล์; process สองตัวเขียนพร้อมกันคนละ worktree ใน Git จริง ต้นฉบับสะอาด; lease ปฏิเสธเจ้าของซ้ำ คืนการ์ดเมื่อครบ TTL และปฏิเสธ token เก่า; งานที่ยังไม่เก็บลบไม่ได้ | 2026-11-19 |
 | L6 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` | 81 ผ่าน / 11 ไฟล์; check จำกัดเวลาและเก็บท้าย stdout/stderr; smoke ผ่านทั้งคำสั่งว่าง, exit 7 และ exit 0 ใน branch ของการ์ดผ่าน MCP จริง; ความเห็นเสริมไม่เปลี่ยนสถานะ | 2026-11-19 |
-| L7 | | | |
+| L7 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · Claude CLI · Chromium | 86 ผ่าน / 12 ไฟล์; Claude Code 2.1.314 ตัวจริงเปิด session เขียนโน้ตผ่าน MCP และปิดการ์ดหลังคำสั่งตรวจผ่าน โดยใช้ API จำลองบน loopback; เทสต์ส่งต่อเมื่อ Claude ติดโควตาใช้ process Gemini จำลอง; Chromium แสดง Claude 65% และ Gemini ยังไม่มีตัวเลข | 2026-11-19 |

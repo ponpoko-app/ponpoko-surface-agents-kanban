@@ -1,6 +1,6 @@
 # Agents Kanban
 
-บอร์ด kanban ที่ coding agent ดึงการ์ดไปทำเองผ่าน MCP แล้วส่งให้ agent อีกตัวตรวจก่อนปิดงาน — การ์ดหนึ่งใบมี session ของ agent ติดไปตลอด รวมถึงตอนแก้รอบสอง
+บอร์ด kanban ที่ agent ทำงานใน Git worktree แยกต่อการ์ด บอร์ดรันคำสั่งตรวจของการ์ดและเก็บผลไว้ก่อนปิดงาน
 
 ## ติดตั้ง
 
@@ -14,8 +14,8 @@ ponpoko surface-install --bundle dist
 
 ## ใช้ครั้งแรก — ไม่มีการคัดลอกคำสั่ง
 
-1. วาง **repo path** ที่แถบด้านบน (โฟลเดอร์ที่ agent จะทำงาน)
-2. หน้าการ์ดแรกจะ**สแกนหา agent ที่ติดตั้งในเครื่อง** (codex, pi, claude, opencode, qwen) แล้วโชว์ปุ่ม **เชื่อมต่อ**
+1. วาง **repo path** ของ Git repository ที่มี commit แล้วในแถบด้านบน บอร์ดจะแยก worktree ให้เมื่อเริ่มทำการ์ด
+2. หน้าการ์ดแรกจะ**สแกนหา agent ที่ติดตั้งในเครื่อง** แล้วโชว์ปุ่ม **เชื่อมต่อ** สำหรับ Codex และ pi
    กดปุ่มเดียวจบ — surface เขียน config ให้เอง (สำรองไฟล์เดิมไว้เป็น `.bak-…`):
    - `~/.codex/config.toml` → `[mcp_servers.agents-kanban]`
    - `~/.pi/agent/mcp.json` → `mcpServers.agents-kanban`
@@ -25,7 +25,17 @@ ponpoko surface-install --bundle dist
 หลังปิดแล้วเปิด Ponpoko ใหม่ port/token เดิมถูกใช้ซ้ำ และ config ที่ชี้มาที่บอร์ดถูกเขียนซ้ำให้อัตโนมัติ
 ถ้า port เดิมถูกใช้อยู่ บอร์ดจะเลือก port ใหม่แล้วอัปเดต config ให้เอง
 
-Claude Code / opencode / Qwen ถูกตรวจพบแต่ยังเขียน config ให้อัตโนมัติไม่ได้ — หน้ารายการจะบอก url ให้ต่อเอง
+บอร์ดตั้ง MCP ให้ Claude Code และ Gemini CLI ตอนเริ่มทำการ์ดโดยใช้บัญชีที่ตั้งไว้ใน CLI นั้น ส่วน opencode และ Qwen แสดงในรายการตรวจพบ
+
+## ตรวจงานก่อนปิด
+
+ใส่คำสั่งตรวจในหน้าการ์ดบรรทัดละคำสั่ง หรือให้ agent ส่ง `checks` ผ่าน `board_submit` บอร์ดจะรันตามลำดับใน worktree เดิมและปิดการ์ดเมื่อผ่านทุกคำสั่ง หากไม่ผ่าน ให้ดู exit code และท้าย output ในบันทึกการ์ด คำสั่งหนึ่งมีเวลาสูงสุด 120 วินาที
+
+บอร์ดตั้ง branch `agents-kanban/<card-id>` ให้แต่ละใบ ผู้ใช้ตัดสินใจว่าจะ merge หรือ publish เมื่อไร Git จะเก็บ branch ไว้หลังลบการ์ด การลบการ์ดที่ยังมีไฟล์แก้ไขค้างจะรอให้เก็บงานก่อน
+
+## โควตาผู้ให้บริการ
+
+แผง agent แสดงสัดส่วนที่ผู้ให้บริการรายงาน จำนวนรัน และเวลาที่โควตาจะเปิดใหม่ เมื่อพบ rate limit บอร์ดข้ามผู้ให้บริการนั้นและเลือก agent ที่ถนัดงานจากตัวที่เหลือ งานใช้ worktree เดิม ส่วน session เปิดใหม่ถ้าเปลี่ยน CLI
 
 ## คำถามจาก agent
 
@@ -48,15 +58,13 @@ Claude Code / opencode / Qwen ถูกตรวจพบแต่ยังเ�
 | Backlog | ยังไม่มีใครทำ ลากไป Working เพื่อเริ่ม |
 | Working | agent กำลังทำบน session ของการ์ดนี้ |
 | Blocked | รอคำตอบจากคุณ — ตอบในหน้าการ์ดแล้ว agent ทำต่อ |
-| Ready to test | งานเสร็จ รอ agent อีกตัว (ที่ไม่ใช่คนทำ) ตรวจ |
-| Fix | ตรวจไม่ผ่าน กลับไปแก้ที่ agent คนเดิม |
-| Done | ปิดงาน |
+| Ready to test | พร้อมรันคำสั่งตรวจจากการ์ด |
+| Fix | ส่งกลับไปแก้ใน worktree เดิม |
+| Done | ผ่านคำสั่งตรวจและปิดงานแล้ว |
 
 ลากการ์ดด้วยเมาส์ได้เฉพาะเส้นทางที่มีความหมาย (Working → Ready to test, Ready to test → Fix/Done, ฯลฯ) คอลัมน์ที่รับไม่ได้จะจางลง ถ้ากดผิดทาง backend จะตอบเป็นข้อความไทย
 
-## agent ที่ไม่ใช่ codex/pi
-
-MCP เป็น streamable HTTP มาตรฐาน — client ตัวไหนที่ต่อ HTTP MCP ได้ก็ใช้ได้ เพิ่ม kind ใหม่ได้ใน `shared/board.ts` + `backend/agents.ts`
+รายละเอียดคำสั่ง headless และการตั้งค่า MCP ของแต่ละ CLI ดูได้จากเอกสารผู้ให้บริการ [Claude Code](https://code.claude.com/docs/en/cli-reference) · [Gemini CLI](https://geminicli.com/docs/cli/headless/)
 
 ## ตรวจงานเอง
 

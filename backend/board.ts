@@ -1,5 +1,6 @@
 import {
 	addNote,
+	AGENT_KINDS,
 	canMove,
 	emptyCard,
 	agentFits,
@@ -9,6 +10,7 @@ import {
 	readVerdict,
 	type Agent,
 	type AgentKind,
+	type AgentUsage,
 	type BoardSnapshot,
 	type Card,
 	type CardQuestion,
@@ -21,6 +23,7 @@ import {
 import type { Attachments, IncomingAttachment } from "./attachments";
 import { normalizeChecks, type CheckResult } from "./checks";
 import type { BoardStore } from "./store";
+import { newAgentId, newCardId, stamp, tagList, trimmed, type AgentInput, type CardInput, type CardPatch } from "./board-input";
 
 export interface Runner {
 	start(card: Card, role: CardRole): boolean;
@@ -28,6 +31,7 @@ export interface Runner {
 	live(): Set<string>;
 	removeWorktree?(cardId: string): void;
 	check?(card: Card): Promise<CheckResult[]>;
+	usage?(): AgentUsage[];
 }
 
 export interface BoardDeps {
@@ -36,49 +40,6 @@ export interface BoardDeps {
 	attachments: Attachments;
 	mcp?: () => McpInfo | null;
 }
-
-export interface CardInput {
-	title?: string;
-	deliverable?: string;
-	spec?: string;
-	acceptance?: string;
-	checks?: string[];
-	tags?: string[];
-	lane?: Lane;
-}
-
-export interface CardPatch {
-	title?: string;
-	deliverable?: string;
-	spec?: string;
-	acceptance?: string;
-	checks?: string[];
-	tags?: string[];
-}
-
-export interface AgentInput {
-	name?: string;
-	kind?: AgentKind;
-	capabilities?: string[];
-	source?: "board" | "mcp";
-}
-
-const stamp = (): number => Date.now();
-
-const trimmed = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
-
-const tagList = (value: unknown): string[] => {
-	const raw = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
-	return [...new Set(raw.map((item) => trimmed(item).toLowerCase()).filter(Boolean))];
-};
-
-export const newCardId = (at: number): string =>
-	`c-${at.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-
-export const newAgentId = (name: string, at: number): string => {
-	const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "agent";
-	return `a-${slug}-${at.toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
-};
 
 export class BoardService {
 	private readonly deps: BoardDeps;
@@ -109,6 +70,7 @@ export class BoardService {
 			agents: this.agents(),
 			settings: this.deps.store.settings(),
 			mcp: this.deps.mcp ? this.deps.mcp() : null,
+			usage: this.deps.runner.usage?.() ?? [],
 			at: stamp(),
 		};
 	}
@@ -161,11 +123,11 @@ export class BoardService {
 		return next;
 	}
 
-	setSession(id: string, role: CardRole, value: string | null): Card {
+	setSession(id: string, role: CardRole, value: string | null, kind?: AgentKind): Card {
 		const card = this.card(id);
 		const next: Card = {
 			...card,
-			sessions: { ...card.sessions, [role]: value },
+			sessions: { ...card.sessions, [role]: value, ...kind && { [`${role}Kind`]: kind } },
 			updatedAt: stamp(),
 		};
 		this.deps.store.putCard(next);
@@ -214,7 +176,7 @@ export class BoardService {
 				);
 			}
 			case "working": {
-				const assignment = card.assignee ? null : pickAssignee(card, agents);
+				const assignment = card.assignee || !this.settings().autoAssign ? null : pickAssignee(card, agents, this.deps.runner.usage?.());
 				const assignee = card.assignee ?? assignment?.agentId ?? null;
 				let next: Card = { ...card, lane, assignee, question: null, interrupted: false, updatedAt: at };
 				if (assignment) next = addNote(next, { at, kind: "move", text: `มอบหมายให้ ${assignment.agentId} — ${assignment.reason}` });
@@ -363,6 +325,8 @@ export class BoardService {
 		this.requireIdle(id);
 		const card = this.card(id);
 		if (card.lane === "working" || card.lane === "fix") {
+			const kind = this.deps.store.agent(card.assignee ?? "")?.kind;
+			if ((!card.assignee || kind && this.isSaturated(kind)) && this.retryAgent(id)) return this.card(id);
 			const started = this.deps.runner.start(card, "implementer");
 			return this.note(id, "event", started ? "ทำต่อใน session เดิม" : "ยังไม่มี agent ว่าง");
 		}
@@ -440,7 +404,7 @@ export class BoardService {
 	addAgent(input: AgentInput): Agent {
 		const at = stamp();
 		const name = trimmed(input.name) || "agent";
-		const kind: AgentKind = input.kind && input.kind !== undefined ? input.kind : "manual";
+		const kind: AgentKind = input.kind && AGENT_KINDS.includes(input.kind) ? input.kind : "manual";
 		const existing = this.deps.store.agents().find((agent) => agent.name === name && agent.kind === kind);
 		const agent: Agent = {
 			id: existing?.id ?? newAgentId(name, at),
@@ -471,6 +435,7 @@ export class BoardService {
 		const agent = this.deps.store.agent(agentId);
 		if (!agent || agent.kind === "manual") return null;
 		if (agent.cardId) return this.deps.store.card(agent.cardId);
+		if (this.isSaturated(agent.kind)) return null;
 		const candidate = laneCards(this.deps.store.cards(), "backlog").find((card) => agentFits(agent, card.tags));
 		if (!candidate) return null;
 		const at = stamp();
@@ -481,6 +446,22 @@ export class BoardService {
 		this.deps.store.putCard(next);
 		this.deps.runner.start(next, "implementer");
 		return this.card(next.id);
+	}
+
+	isSaturated(kind: AgentKind): boolean {
+		return (this.deps.runner.usage?.().find((entry) => entry.kind === kind)?.saturatedUntil ?? 0) > Date.now();
+	}
+
+	retryAgent(id: string): boolean {
+		const card = this.card(id);
+		if (!this.settings().autoAssign || !["working", "fix"].includes(card.lane) || this.isChecking(id)) return false;
+		const next = pickAssignee(card, this.agents(), this.deps.runner.usage?.());
+		if (!next) return false;
+		const at = stamp();
+		const text = card.assignee ? `ส่งต่อให้ ${next.agentId} เพราะ agent เดิมติดโควตา` : `มอบหมายให้ ${next.agentId}`;
+		const replacement = addNote({ ...card, assignee: next.agentId }, { at, kind: "move", text });
+		this.deps.store.putCard(replacement);
+		return this.deps.runner.start(replacement, "implementer");
 	}
 
 	claim(agentId: string, cardId: string): Agent | null {
