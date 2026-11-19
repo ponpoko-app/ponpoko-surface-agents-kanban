@@ -26,6 +26,7 @@ export interface Runner {
 	start(card: Card, role: CardRole): boolean;
 	stop(cardId: string): void;
 	live(): Set<string>;
+	removeWorktree?(cardId: string): void;
 }
 
 export interface BoardDeps {
@@ -81,7 +82,7 @@ export const newCardId = (at: number): string =>
 
 export const newAgentId = (name: string, at: number): string => {
 	const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "agent";
-	return `a-${slug}-${at.toString(36)}`;
+	return `a-${slug}-${at.toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
 };
 
 export class BoardService {
@@ -171,13 +172,6 @@ export class BoardService {
 		return next;
 	}
 
-	setLane(id: string, lane: Lane): Card {
-		const card = this.card(id);
-		const next: Card = { ...card, lane, interrupted: false, updatedAt: stamp() };
-		this.deps.store.putCard(next);
-		return next;
-	}
-
 	markInterrupted(id: string): Card {
 		const card = this.card(id);
 		const at = stamp();
@@ -210,8 +204,8 @@ export class BoardService {
 		switch (lane) {
 			case "backlog": {
 				this.deps.runner.stop(card.id);
-				this.release(card.assignee);
-				this.release(card.reviewer);
+				this.release(card.assignee, card.id);
+				this.release(card.reviewer, card.id);
 				return addNote(
 					{ ...card, lane, assignee: null, reviewer: null, question: null, answer: null, interrupted: false, verdict: null, updatedAt: at },
 					{ at, kind: "move", text: "พักไว้ใน Backlog" },
@@ -225,8 +219,9 @@ export class BoardService {
 				if (!assignee) {
 					return addNote(next, { at, kind: "event", text: "ยังไม่มี agent ว่าง งานรออยู่ — ลากการ์ดเองหรือเพิ่ม agent" });
 				}
+				this.deps.store.putCard(next);
 				const resumed = this.deps.runner.start(next, "implementer");
-				next = addNote(next, {
+				next = addNote(this.card(card.id), {
 					at,
 					kind: "event",
 					text: resumed ? (card.lane === "backlog" ? "เริ่มทำงาน" : "ทำงานต่อใน session เดิม") : "ยังไม่มี agent ว่าง งานรออยู่",
@@ -245,7 +240,11 @@ export class BoardService {
 					next,
 					{ at, kind: "review", text: reviewer ? `ส่งให้ ${reviewer} ตรวจ` : "งานเสร็จ รอคนตรวจ (ยังไม่มี agent ว่าง)" },
 				);
-				if (reviewer) this.deps.runner.start(next, "reviewer");
+				if (reviewer) {
+					this.deps.store.putCard(next);
+					this.deps.runner.start(next, "reviewer");
+					return this.card(card.id);
+				}
 				return next;
 			}
 			case "fix": {
@@ -255,8 +254,8 @@ export class BoardService {
 			}
 			case "done": {
 				this.deps.runner.stop(card.id);
-				this.release(card.assignee);
-				this.release(card.reviewer);
+				this.release(card.assignee, card.id);
+				this.release(card.reviewer, card.id);
 				const next: Card = { ...card, lane, updatedAt: at };
 				return addNote(next, { at, kind: "system", text: "ปิดงาน" });
 			}
@@ -385,9 +384,10 @@ export class BoardService {
 	deleteCard(id: string): Card {
 		const card = this.card(id);
 		this.deps.runner.stop(id);
+		this.deps.runner.removeWorktree?.(id);
 		this.deps.attachments.removeCard(id);
-		this.release(card.assignee);
-		this.release(card.reviewer);
+		this.release(card.assignee, id);
+		this.release(card.reviewer, id);
 		this.deps.store.removeCard(id);
 		return card;
 	}
@@ -438,20 +438,6 @@ export class BoardService {
 		for (const card of cards) this.deps.store.putCard(card);
 	}
 
-	assign(id: string, agentId: string, role: CardRole = "implementer"): Card {
-		const card = this.card(id);
-		const at = stamp();
-		const base: Card =
-			role === "reviewer"
-				? { ...card, reviewer: agentId, updatedAt: at }
-				: { ...card, assignee: agentId, updatedAt: at };
-		const next = addNote(base, { at, kind: "move", text: `มอบหมายให้ ${agentId} ผ่าน MCP` });
-		this.deps.store.putCard(next);
-		this.claim(agentId, id);
-		this.deps.runner.start(next, role);
-		return next;
-	}
-
 	claimNext(agentId: string): Card | null {
 		const agent = this.deps.store.agent(agentId);
 		if (!agent || agent.kind === "manual") return null;
@@ -464,9 +450,8 @@ export class BoardService {
 			{ at, kind: "move", text: `${agent.name} ดึงการ์ดจาก Backlog` },
 		);
 		this.deps.store.putCard(next);
-		this.claim(agentId, next.id);
 		this.deps.runner.start(next, "implementer");
-		return next;
+		return this.card(next.id);
 	}
 
 	claim(agentId: string, cardId: string): Agent | null {
@@ -477,20 +462,10 @@ export class BoardService {
 		return next;
 	}
 
-	release(agentId: string | null): void {
+	release(agentId: string | null, cardId: string): void {
 		if (!agentId) return;
 		const agent = this.deps.store.agent(agentId);
-		if (!agent) return;
-		const busy = this.deps.store
-			.cards()
-			.filter((card) => card.lane === "working" && (card.assignee === agentId || card.reviewer === agentId));
-		const next: Agent = {
-			...agent,
-			state: busy.length > 0 ? "working" : "idle",
-			cardId: busy[0]?.id ?? null,
-			load: Math.max(0, busy.length),
-			lastSeenAt: stamp(),
-		};
-		this.deps.store.putAgent(next);
+		if (agent?.cardId !== cardId) return;
+		this.deps.store.putAgent({ ...agent, state: "idle", cardId: null, load: 0, lastSeenAt: stamp() });
 	}
 }

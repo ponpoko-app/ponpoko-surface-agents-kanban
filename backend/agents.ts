@@ -59,6 +59,7 @@ export const buildMessage = (card: Card, role: CardRole, phase: Phase, opts: Mes
 	const extra = opts.extra;
 	const lines = [
 		`การ์ด: ${card.title}`,
+		"เมื่อเรียก MCP เพื่อแก้การ์ด ให้ใส่ค่า AGENTS_KANBAN_LEASE จาก environment ใน lease_token ด้วย",
 		card.deliverable ? `deliverable ที่ต้องปิดให้จบ: ${card.deliverable}` : "deliverable: ทำให้งานนี้ปิดจบได้จริง",
 		card.spec ? `สเปก: ${card.spec}` : "",
 		card.acceptance ? `เกณฑ์ผ่าน: ${card.acceptance}` : "",

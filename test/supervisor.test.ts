@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Attachments } from "../backend/attachments";
 import { BoardService } from "../backend/board";
+import { Leases } from "../backend/leases";
 import { BoardStore } from "../backend/store";
 import { Supervisor } from "../backend/supervisor";
 
@@ -32,6 +33,11 @@ const alive = (pid: number): boolean => {
 };
 
 const rows = (path: string): string[] => (existsSync(path) ? readFileSync(path, "utf8").split("\n").filter(Boolean) : []);
+const git = (...args: string[]): string => {
+	const result = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
+	if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+	return result.stdout.toString().trim();
+};
 
 interface Setup {
 	store: BoardStore;
@@ -59,6 +65,10 @@ beforeAll(() => {
 	writeFileSync(argsFile, "");
 	rmSync(repo, { recursive: true, force: true });
 	Bun.spawnSync(["mkdir", "-p", repo]);
+	git("init", "-q");
+	writeFileSync(join(repo, "readme.txt"), "ต้นฉบับ\n");
+	git("add", "readme.txt");
+	git("-c", "user.name=Kanban", "-c", "user.email=kanban@example.test", "commit", "-qm", "เริ่มต้น");
 	const stub = join(root, "codex");
 	writeFileSync(
 		stub,
@@ -68,6 +78,8 @@ beforeAll(() => {
 			"printf '%s\\n' \"$*\" >> \"$KANBAN_TEST_ARGS\"",
 			"echo '{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}'",
 			"echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"command\":\"bun run build\",\"exit_code\":0}}'",
+			"if [ \"$KANBAN_TEST_WRITE_CWD\" = 1 ]; then printf '%s' \"$AGENTS_KANBAN_CARD_ID\" > card-work.txt; fi",
+			"if [ \"$KANBAN_TEST_FAIL_CARD\" = \"$AGENTS_KANBAN_CARD_ID\" ]; then exit 23; fi",
 			"sleep 30",
 			"",
 		].join("\n"),
@@ -150,6 +162,68 @@ describe("a card's worker process", () => {
 			})).toBe(true);
 			expect(store.card(id)).toMatchObject({ lane: "working", question: null, answer: "ลูกค้า" });
 		} finally {
+			supervisor.stopAll();
+			await waitFor(() => supervisor.live().size === 0);
+			store.close();
+		}
+	});
+
+	test("agent สองตัวเขียนพร้อมกันคนละ worktree และ Git ไม่ลบงานที่ยังไม่ได้เก็บ", async () => {
+		const { board, store, supervisor } = setup(join(root, "parallel"));
+		process.env.KANBAN_TEST_WRITE_CWD = "1";
+		try {
+			board.addAgent({ name: "หนึ่ง", kind: "codex" });
+			board.addAgent({ name: "สอง", kind: "codex" });
+			const first = board.createCard({ title: "หนึ่ง" });
+			const second = board.createCard({ title: "สอง" });
+			board.moveCard(first.id, "working");
+			board.moveCard(second.id, "working");
+			const firstFile = join(store.root, "worktrees", first.id, "card-work.txt");
+			const secondFile = join(store.root, "worktrees", second.id, "card-work.txt");
+			expect(await waitFor(() => existsSync(firstFile) && existsSync(secondFile))).toBe(true);
+			expect(readFileSync(firstFile, "utf8")).toBe(first.id);
+			expect(readFileSync(secondFile, "utf8")).toBe(second.id);
+			expect(supervisor.live()).toEqual(new Set([first.id, second.id]));
+			expect(git("status", "--porcelain")).toBe("");
+			expect(supervisor.sweep(false, Date.now() + 180_000)).toEqual([]);
+			supervisor.stopAll();
+			expect(await waitFor(() => supervisor.live().size === 0)).toBe(true);
+			expect(() => board.deleteCard(first.id)).toThrow(/เก็บงาน/);
+			expect(readFileSync(firstFile, "utf8")).toBe(first.id);
+			rmSync(firstFile);
+			board.deleteCard(first.id);
+			expect(existsSync(join(store.root, "worktrees", first.id))).toBe(false);
+			expect(git("show-ref", "--verify", `refs/heads/agents-kanban/${first.id}`)).toContain(first.id);
+		} finally {
+			delete process.env.KANBAN_TEST_WRITE_CWD;
+			supervisor.stopAll();
+			await waitFor(() => supervisor.live().size === 0);
+			store.close();
+		}
+	});
+
+	test("agent ที่ตายยังถือสิทธิ์ถึง TTL หลังจากนั้นการ์ดกลับ Backlog และสิทธิ์เดิมใช้ไม่ได้", async () => {
+		const { board, store, supervisor } = setup(join(root, "lease"));
+		try {
+			const agent = board.addAgent({ name: "agent-lease", kind: "codex" });
+			const { id } = board.createCard({ title: "งานที่ถูกขัดจังหวะ" });
+			process.env.KANBAN_TEST_FAIL_CARD = id;
+			board.moveCard(id, "working");
+			const leases = new Leases(store);
+			const lease = leases.get(id)!;
+			expect(leases.acquire(id, "อีกตัว", "implementer")).toBeNull();
+			expect(leases.acquire("อีกใบ", agent.id, "implementer")).toBeNull();
+			expect(() => supervisor.useLease(id, "ผิด")).toThrow(/สิทธิ์/);
+			supervisor.useLease(id, lease.token);
+			expect(await waitFor(() => !supervisor.live().has(id))).toBe(true);
+			expect(supervisor.sweep(false)).toEqual([]);
+			expect(board.card(id).lane).toBe("working");
+			expect(supervisor.sweep(false, Date.now() + 91_000).map((card) => card.id)).toEqual([id]);
+			expect(board.card(id)).toMatchObject({ lane: "backlog", assignee: null });
+			expect(board.card(id).notes.at(-1)?.text).toContain("สิทธิ์หมดอายุ");
+			expect(() => supervisor.useLease(id, lease.token)).toThrow(/หมดอายุ/);
+		} finally {
+			delete process.env.KANBAN_TEST_FAIL_CARD;
 			supervisor.stopAll();
 			await waitFor(() => supervisor.live().size === 0);
 			store.close();

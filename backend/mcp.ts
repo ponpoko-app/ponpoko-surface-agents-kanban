@@ -3,6 +3,7 @@ import type { BoardService } from "./board";
 
 export interface McpDeps {
 	board: () => BoardService;
+	useLease?: (cardId: string, token: string) => void;
 }
 
 export interface McpServer {
@@ -20,6 +21,8 @@ interface RpcRequest {
 type Args = Record<string, unknown>;
 
 const PROTOCOL_VERSION = "2025-06-18";
+const LEASE_TOOLS = new Set(["board_note", "board_ask", "board_block", "board_submit", "board_review"]);
+const LEASE_TOKEN = { type: "string", description: "สิทธิ์ของ agent ที่บอร์ดส่งผ่าน AGENTS_KANBAN_LEASE" };
 
 const TOOLS = [
 	{
@@ -125,6 +128,7 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 
 	const runTool = (name: string, args: Args): unknown => {
 		const board = deps.board();
+		if (LEASE_TOOLS.has(name)) deps.useLease?.(text(args, "card_id"), text(args, "lease_token"));
 		switch (name) {
 			case "agents_join":
 				return board.addAgent({
@@ -190,7 +194,9 @@ export async function startMcpServer(deps: McpDeps, options: { port?: number; to
 		}
 		if (method.startsWith("notifications/")) return null;
 		if (method === "ping") return answer(request.id, {});
-		if (method === "tools/list") return answer(request.id, { tools: TOOLS });
+	if (method === "tools/list") return answer(request.id, { tools: TOOLS.map((tool) => LEASE_TOOLS.has(tool.name)
+		? { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...tool.inputSchema.properties, lease_token: LEASE_TOKEN } } }
+		: tool) });
 		if (method === "tools/call") {
 			const name = typeof request.params?.name === "string" ? request.params.name : "";
 			const args = (request.params?.arguments as Args) ?? {};

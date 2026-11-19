@@ -2,12 +2,15 @@ import type { Card, CardRole } from "../shared/board";
 import { buildLaunch, buildMessage, readEvent, readSessionId, type Phase } from "./agents";
 import type { BoardService, Runner } from "./board";
 import type { BoardStore } from "./store";
+import { DEFAULT_LEASE_TTL_MS, Leases, type Lease } from "./leases";
+import { Worktrees } from "./worktree";
 
 export interface SupervisorDeps {
 	store: BoardStore;
 	board: () => BoardService;
 	repoPath: () => string;
 	cutoffMs?: number;
+	leaseTtlMs?: number;
 }
 
 interface Run {
@@ -16,7 +19,7 @@ interface Run {
 	agentId: string;
 	pid: number;
 	proc: ReturnType<typeof Bun.spawn>;
-	startedAt: number;
+	lease: Lease;
 	lastNoteAt: number;
 	lastText: string;
 	stderr: string[];
@@ -55,9 +58,13 @@ export class Supervisor implements Runner {
 	private readonly deps: SupervisorDeps;
 
 	private readonly runs = new Map<string, Run>();
+	private readonly leases: Leases;
+	private readonly worktrees: Worktrees;
 
 	constructor(deps: SupervisorDeps) {
 		this.deps = deps;
+		this.leases = new Leases(deps.store);
+		this.worktrees = new Worktrees(deps.store.root);
 	}
 
 	private get cutoff(): number {
@@ -66,6 +73,18 @@ export class Supervisor implements Runner {
 
 	live(): Set<string> {
 		return new Set(this.runs.keys());
+	}
+
+	useLease(cardId: string, token: string): void {
+		const lease = this.leases.get(cardId);
+		if (!lease && !token) return;
+		if (!lease || lease.token !== token || this.runs.get(cardId)?.stopping) throw new Error("สิทธิ์ทำงานของการ์ดนี้ไม่ตรงหรือหมดอายุ");
+		this.leases.touch(lease);
+	}
+
+	removeWorktree(cardId: string): void {
+		if (this.leases.get(cardId)) throw new Error("การ์ดยังมี agent ทำงานหรือกำลังหยุด ลองใหม่เมื่อหยุดแล้ว");
+		this.worktrees.remove(cardId);
 	}
 
 	start(card: Card, role: CardRole): boolean {
@@ -110,32 +129,34 @@ export class Supervisor implements Runner {
 			images,
 		});
 		let launch: ReturnType<typeof buildLaunch>;
-		try {
-			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath, sessionId, images });
-		} catch (error) {
-			board.note(card.id, "system", String(error));
-			return false;
-		}
+		let lease: Lease | null = null;
 		let proc: ReturnType<typeof Bun.spawn>;
 		try {
+			lease = this.leases.acquire(card.id, agentId, role);
+			if (!lease) throw new Error("การ์ดหรือ agent ยังมีงานที่ถือสิทธิ์อยู่");
+			const worktree = this.worktrees.ensure(card.id, repoPath);
+			launch = buildLaunch(agent.kind, { card, role, phase, message, repoPath: worktree, sessionId, images });
 			proc = Bun.spawn([launch.command, ...launch.args], {
 				cwd: launch.cwd,
-				env: { ...process.env, ...launch.env },
+				env: { ...process.env, ...launch.env, AGENTS_KANBAN_LEASE: lease.token },
 				stdout: "pipe",
 				stderr: "pipe",
 				detached: true,
 			});
 		} catch (error) {
-			board.note(card.id, "system", `รัน ${launch.command} ไม่ได้: ${String(error)}`);
+			if (lease) this.leases.release(lease);
+			board.note(card.id, "system", `เริ่ม agent ไม่ได้ · ${String(error)}`);
 			return false;
 		}
+		this.leases.started(lease, proc.pid);
+		board.claim(agentId, card.id);
 		const run: Run = {
 			cardId: card.id,
 			role,
 			agentId,
 			pid: proc.pid,
 			proc,
-			startedAt: Date.now(),
+			lease,
 			lastNoteAt: 0,
 			lastText: "",
 			stderr: [],
@@ -161,10 +182,12 @@ export class Supervisor implements Runner {
 
 	private async pump(run: Run): Promise<void> {
 		const stderr = splitLines(run.proc.stderr as ReadableStream<Uint8Array> | undefined, (line) => {
+			this.leases.touch(run.lease);
 			run.stderr.push(line);
 			if (run.stderr.length > STDERR_KEEP) run.stderr.shift();
 		});
 		const stdout = splitLines(run.proc.stdout as ReadableStream<Uint8Array> | undefined, (line) => {
+			this.leases.touch(run.lease);
 			const sessionId = readSessionId("pi", line) ?? readSessionId("codex", line);
 			if (sessionId && sessionId !== (run.role === "reviewer" ? this.currentSession(run) : this.currentSession(run))) {
 				this.deps.board().setSession(run.cardId, run.role, sessionId);
@@ -175,6 +198,9 @@ export class Supervisor implements Runner {
 			if (!event.done) this.transfer(run, event.action, event.text);
 		});
 		const code = await run.proc.exited;
+		if (this.runs.get(run.cardId) === run) {
+			try { process.kill(-run.pid, "SIGKILL"); } catch {}
+		}
 		await Promise.all([stdout, stderr]);
 		this.finish(run, code);
 	}
@@ -189,24 +215,23 @@ export class Supervisor implements Runner {
 		this.runs.delete(run.cardId);
 		const board = this.deps.board();
 		const card = this.deps.store.card(run.cardId);
+		if (run.stopping || !card || code === 0 || run.role === "reviewer") {
+			this.leases.release(run.lease);
+			board.release(run.agentId, run.cardId);
+		}
 		if (run.stopping) {
-			board.release(run.agentId);
 			const role = run.restartRole;
 			if (card && role && (role === "reviewer" ? card.lane === "ready_to_test" : card.lane === "working" || card.lane === "fix")) {
 				this.start(card, role);
 			}
 			return;
 		}
-		if (!card) {
-			board.release(run.agentId);
-			return;
-		}
+		if (!card) return;
 		const tail = run.stderr.slice(-3).join(" / ");
 		if (run.role === "reviewer") {
 			const verdictText = (run.lastText || tail).trim();
 			if (verdictText) board.reviewVerdict(run.cardId, verdictText);
 			else board.note(run.cardId, "system", `คนตรวจจบโดยไม่บอกผล (exit ${code})`);
-			board.release(run.agentId);
 			return;
 		}
 		const moved = this.deps.store.card(run.cardId) ?? card;
@@ -216,7 +241,6 @@ export class Supervisor implements Runner {
 		} else {
 			board.note(run.cardId, "system", `จบด้วย exit ${code}${tail ? ` — ${tail}` : ""}`);
 		}
-		board.release(run.agentId);
 	}
 
 	stop(cardId: string): void {
@@ -249,13 +273,23 @@ export class Supervisor implements Runner {
 		for (const cardId of this.runs.keys()) this.stop(cardId);
 	}
 
-	sweep(): Card[] {
+	sweep(recoverLegacy = true, now = Date.now()): Card[] {
 		const board = this.deps.board();
 		const settings = this.deps.store.settings();
 		const swept: Card[] = [];
+		for (const lease of this.leases.expired(this.deps.leaseTtlMs ?? DEFAULT_LEASE_TTL_MS, now)) {
+			if (this.runs.has(lease.cardId) || !this.leases.release(lease)) continue;
+			board.release(lease.agentId, lease.cardId);
+			const card = this.deps.store.card(lease.cardId);
+			if (!card || !["working", "fix", "ready_to_test"].includes(card.lane)) continue;
+			if (card.lane === "ready_to_test") board.moveCard(card.id, "fix");
+			board.moveCard(card.id, "backlog");
+			swept.push(board.note(card.id, "system", "agent หยุดส่งเหตุการณ์และสิทธิ์หมดอายุ คืนการ์ดเข้าคิวแล้ว"));
+		}
+		if (!recoverLegacy) return swept;
 		for (const card of this.deps.store.cards()) {
 			if (card.lane !== "working" && card.lane !== "fix") continue;
-			if (this.runs.has(card.id)) continue;
+			if (this.runs.has(card.id) || this.leases.get(card.id)) continue;
 			board.markInterrupted(card.id);
 			const fresh = this.deps.store.card(card.id);
 			if (fresh) swept.push(fresh);

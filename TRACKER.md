@@ -54,10 +54,10 @@
 
 | # | Gap | หลักฐานในโค้ด | ปิดด้วย |
 |---|---|---|---|
-| **G1** | ทุกการ์ดเขียน repo เดียวกัน ⇒ **ขนานไม่ได้** | `backend/supervisor.ts` ใช้ `deps.repoPath()` ตรง ๆ | L5 |
+| **G1** | ทุกการ์ดเขียน repo เดียวกัน ⇒ **ขนานไม่ได้** | Supervisor เปิด agent ใน worktree ของการ์ด | L5 · ปิดแล้ว |
 | **G2** | board ไม่รัน check เอง ⇒ "เสร็จ" ไม่มีความหมาย | `backend/mcp.ts` → `reviewVerdict(card_id, "PASS\n…")` | L6 |
 | **G3** | agent ถามพร้อมตัวเลือกไม่ได้ ⇒ มนุษย์ต้องพิมพ์คำตอบเอง | `board_ask` บันทึก `CardQuestion` และหน้าการ์ดให้กดตัวเลือกได้ | L1 · ปิดแล้ว |
-| **G4** | agent ตายแล้วการ์ดค้าง `working` ไม่มี reclaim | `supervisor` มีแค่ `cutoffMs` ของ event ไม่มี lease TTL | L5 (มาพร้อม lease) |
+| **G4** | agent ตายแล้วการ์ดค้าง `working` ไม่มี reclaim | sweep ตรวจ mtime กับสถานะ process และคืนการ์ดไป Backlog | L5 · ปิดแล้ว |
 | **G5** | ไม่มีตัวเลข usage/quota ต่อ vendor | ไม่มี parser usage ที่ไหนเลย | L7 |
 | **G6** | UI เรียก Host AI ไม่ได้ | `src/board/consult.ts` ใช้ `BoardClient.call` กับ `host.platform / ai.request` | L3 · ปิดแล้ว |
 | G7 | spawn ได้แค่ codex/pi | `AGENT_COMMANDS` มี 2 kind | L7 |
@@ -103,7 +103,7 @@ G1, G2 คือสองข้อที่ทำให้ระบบยัง�
 - **ทำ**: `backend/worktree.ts` ใหม่ (สร้าง/ลบ worktree ใต้ data dir), `supervisor.start()` ใช้ cwd ของ worktree ใบนั้น, lease TTL จาก mtime ของ event + sweep คืนใบที่ค้าง
 - **acceptance**: การ์ด 2 ใบรันพร้อมกันได้โดย cwd ต่างกัน; repo หลักไม่ถูกแตะ; ใบที่ agent ตายเกิน TTL ถูกคืนเป็น `todo` พร้อม note; `bun test` เขียว
 - **proof**: `bun test` + `bun run typecheck`
-- **สถานะ**: todo
+- **สถานะ**: done (ใช้ Backlog ในบอร์ดหกคอลัมน์ปัจจุบัน)
 
 ### L6 — GATE: board รัน check เอง
 
@@ -141,6 +141,6 @@ L5/L6 ทำสลับก่อนได้ถ้าต้องการพ�
 | L2 | `bun test` · `bun run lint` · `bun run build` · `bun run smoke` · `bun run check:bundle` · `surface-test` · `surface-inspect` · `surface-act` · `surface-play` · `surface-replay` | 71 ผ่าน / 9 ไฟล์ / 0 fail; typecheck, lint, build, smoke และ SDK ผ่าน; ตอบ 5 ข้อด้วย 5 คลิกโดยไม่พิมพ์ ตัวนับลดจาก 5/5 ถึง 1/5 แล้วคิวหาย; ยอมรับทั้งหมดใช้คำแนะนำรายข้อและเว้นปัญหาไว้; ทดสอบคีย์ลัดและไว้ก่อนใน Chromium; replay ตรง 2 ขั้นและ 1 ข้อสังเกต; headless วัด backend-down และ empty-data ไม่ได้; หลักฐาน UI ใน `trial-run/l2/` | 2026-11-19 |
 | L3 | `bun test test/consult.test.ts` · `bun run lint` · `bun run build` · `bun run check:bundle` | เทสต์ใหม่ผ่าน 5/5; typecheck, lint, build และสัญญา Host AI ผ่าน; ลองใน Chromium ด้วย Host AI จำลอง คิวและหน้าการ์ดใช้ผลเดิม ร่างแก้ได้และบันทึกเมื่อกดส่งเท่านั้น; ผล UI ใน `trial-run/l3/draft.log` | 2026-11-19 |
 | L4 | `bun test test/attention.test.ts` · `bun run build` · Chromium | 5/5 ผ่านและ build ผ่าน; หลังส่งคำตอบข้อสุดท้าย ตัวเลือกหายและข้อความปรากฏ จากนั้นย้ายไปแถบบน ขณะที่ปัญหายังถูกแสดง | 2026-11-19 |
-| L5 | | | |
+| L5 | `bun test` · `bun run lint` · `bun run typecheck` | 79 ผ่าน / 10 ไฟล์; process สองตัวเขียนพร้อมกันคนละ worktree ใน Git จริง ต้นฉบับสะอาด; lease ปฏิเสธเจ้าของซ้ำ คืนการ์ดเมื่อครบ TTL และปฏิเสธ token เก่า; งานที่ยังไม่เก็บลบไม่ได้ | 2026-11-19 |
 | L6 | | | |
 | L7 | | | |

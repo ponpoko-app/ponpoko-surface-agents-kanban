@@ -23,7 +23,7 @@ let mcp: McpServer | null = null;
 board = new BoardService({ store, runner: supervisor, attachments: new Attachments(directory), mcp: () => mcp?.info ?? null });
 if (process.env.AGENTS_KANBAN_NO_MCP !== "1") {
 	const binding = loadBinding(directory);
-	mcp = await startMcpServer({ board: () => board }, { port: binding?.port, token: binding?.token });
+	mcp = await startMcpServer({ board: () => board, useLease: (id, token) => supervisor.useLease(id, token) }, { port: binding?.port, token: binding?.token });
 	const port = Number(new URL(mcp.info.url).port);
 	saveBinding(directory, { port, token: mcp.info.token });
 	if (process.env.AGENTS_KANBAN_NO_AGENT_CONFIG !== "1") {
@@ -32,9 +32,12 @@ if (process.env.AGENTS_KANBAN_NO_MCP !== "1") {
 }
 
 supervisor.sweep();
+const sweepTimer = setInterval(() => supervisor.sweep(false), 5000);
+sweepTimer.unref?.();
 
 const app = new BoardApp(board);
 const shutdown = (): void => {
+	clearInterval(sweepTimer);
 	supervisor.stopAll();
 	mcp?.stop();
 };
